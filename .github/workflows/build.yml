@@ -1,0 +1,38 @@
+name: Build & Test
+
+on:
+  push:
+    paths:
+      - "AlamosHA/**"
+      - ".github/workflows/build.yml"
+  pull_request:
+    paths:
+      - "AlamosHA/**"
+      - ".github/workflows/build.yml"
+
+jobs:
+  # Kernlogik ist plattformunabhängig und wird zusätzlich unter Linux getestet.
+  test-core:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: AlamosHA
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet test tests/AlamosHA.Core.Tests/AlamosHA.Core.Tests.csproj
+
+  # Die WPF-Oberfläche braucht die Windows Desktop SDK und kann nur unter Windows gebaut werden.
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: AlamosHA
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet build AlamosHA.sln -c Release
