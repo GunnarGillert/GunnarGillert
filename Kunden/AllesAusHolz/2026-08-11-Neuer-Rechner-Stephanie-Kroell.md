@@ -21,6 +21,8 @@
 - [ ] Kreditkarte für Cloudflare R2 Storage hinterlegen
 - [x] Outlook-Signatur eingerichtet
 - [x] Client Install ausgeführt – Angebotswerk funktioniert
+- [x] Claude AI kostenloses Konto erstellt für `info@allesausholzgmbh.de`
+- [ ] Kreditkarte für Claude API hinterlegen
 
 ## Yahoo Mail in Outlook (`allesausholz@yahoo.de`)
 
