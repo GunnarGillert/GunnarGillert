@@ -111,6 +111,23 @@ Bei Exchange-Postfächern von IONOS/1&1 gibt es – anders als bei POP/IMAP – 
 - [Microsoft Learn – Outlook kann ActiveSync nicht zum Verbinden von Exchange verwenden](https://learn.microsoft.com/de-de/troubleshoot/outlook/profiles-and-accounts/outlook-cannot-use-activesync-connect-exchange)
 - [Microsoft Q&A – „Microsoft365 Single Abo, Die Aktion kann nicht abgeschlossen werden..."](https://learn.microsoft.com/de-de/answers/questions/4697726/microsoft365-single-abo-die-aktion-kann-nicht-abge)
 
+## 1&1 (IONOS) Kundendaten
+
+- **Kundennummer (KD-Nummer)** für 1&1-Exchange und Homepage: `583805328`
+- **Passwort:** liegt in PassKee
+
+### E-Mail-Adressen unter `allesausholzgmbh.de`
+
+| Typ | E-Mail-Adresse | Weiterleitung/techn. Adresse | Virenschutz | Archivierung | KI-Assistent |
+|---|---|---|---|---|---|
+| Postfach | `braun@allesausholzgmbh.de` | `info@allesausholzgmbh.de` | ✅ | ✅ | ✅ |
+| Postfach | `charly@allesausholzgmbh.de` | `info@allesausholzgmbh.de` | ✅ | ✅ | ✅ |
+| Postfach | `fabian.scherer@allesausholzgmbh.de` | – | ✅ | ✅ | ✅ |
+| Weiterleitung (kein eigenes Postfach) | `info@allesausholzgmbh.de` | – | ❌ | ✅ | ❌ |
+| Postfach | `info_archiv@allesausholzgmbh.de` | `e564911416@1.exchange.1and1.eu` | ✅ | ✅ | ✅ |
+| Postfach | `ipcam@allesausholzgmbh.de` | – | ✅ | ✅ | ✅ |
+| Postfach | `webmaster@allesausholzgmbh.de` | `info@allesausholzgmbh.de` | ✅ | ✅ | ✅ |
+
 ## Notfall-/Wiederherstellungskonten (Break Glass)
 
 - `allesausholz@yahoo.de` ist das Break-Glass-/Wiederherstellungskonto für den 1&1-(IONOS-)Zugang
