@@ -111,6 +111,12 @@ Bei Exchange-Postfächern von IONOS/1&1 gibt es – anders als bei POP/IMAP – 
 - [Microsoft Learn – Outlook kann ActiveSync nicht zum Verbinden von Exchange verwenden](https://learn.microsoft.com/de-de/troubleshoot/outlook/profiles-and-accounts/outlook-cannot-use-activesync-connect-exchange)
 - [Microsoft Q&A – „Microsoft365 Single Abo, Die Aktion kann nicht abgeschlossen werden..."](https://learn.microsoft.com/de-de/answers/questions/4697726/microsoft365-single-abo-die-aktion-kann-nicht-abge)
 
+## Notfall-/Wiederherstellungskonten (Break Glass)
+
+- `allesausholz@yahoo.de` ist das Break-Glass-/Wiederherstellungskonto für den 1&1-(IONOS-)Zugang
+- Der 1&1-(IONOS-)Zugang ist umgekehrt das Break-Glass-/Wiederherstellungskonto für `allesausholz@yahoo.de`
+- D. h. beide Konten dienen sich gegenseitig zur Wiederherstellung – Zugangsdaten für beide daher besonders sorgfältig in KeePass pflegen
+
 ## Notizen
 
 - Alle vergebenen Passwörter sind in KeePass hinterlegt.
