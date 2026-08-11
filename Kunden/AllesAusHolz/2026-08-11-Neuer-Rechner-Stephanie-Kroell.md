@@ -15,6 +15,7 @@
 - [x] Samsung Scanner mit NAPS2 eingerichtet
 - [x] FritzBox Update (PW in KeePass)
 - [x] Avast Business Hub für Viren- und Patchmanagement, `info@allesausholzgmbh.de` (PW in KeePass)
+- [ ] Passwort für `allesausholz@yahoo.de` in KeePass ablegen
 
 ## Yahoo Mail in Outlook (`allesausholz@yahoo.de`)
 
