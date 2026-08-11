@@ -20,6 +20,7 @@
 - [x] Cloudflare registriert auf `info@allesausholzgmbh.de` (PW in KeePass)
 - [ ] Kreditkarte für Cloudflare R2 Storage hinterlegen
 - [x] Outlook-Signatur eingerichtet
+- [x] Client Install ausgeführt – Angebotswerk funktioniert
 
 ## Yahoo Mail in Outlook (`allesausholz@yahoo.de`)
 
