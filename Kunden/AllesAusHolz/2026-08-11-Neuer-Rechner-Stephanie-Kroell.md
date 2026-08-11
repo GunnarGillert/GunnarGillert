@@ -43,6 +43,16 @@ App-Passwort bei Yahoo erstellen:
 4. App auswählen (z. B. „Andere App" → „Outlook" eintippen)
 5. Generiertes Passwort kopieren und beim Einrichten in Outlook statt des normalen Passworts eingeben
 
+### Fehler: Kontoname im Ordnerbereich blieb leer (behoben)
+
+Nach dem Einrichten zeigte der Ordnerbereich oben keinen Kontonamen an (leerer Eintrag über Posteingang/Draft/Sent/...). Folgende Fixes haben **nicht** geholfen:
+
+- Rechtsklick auf den leeren Eintrag → „Datendatei-Eigenschaften..." → Name gesetzt
+- Kontoeinstellungen → Konto ändern → „Weitere Einstellungen" → Allgemein → „Kontobezeichnung" gesetzt
+- `outlook.exe /resetnavpane`
+
+**Was letztlich funktioniert hat:** Konto komplett entfernen (Kontoeinstellungen → Konto auswählen → Entfernen) und neu hinzufügen. Passiert laut Microsoft, wenn beim ursprünglichen Hinzufügen des Kontos etwas nicht sauber durchgelaufen ist.
+
 ## 1&1 (IONOS) Exchange in Outlook (`info@allesausholz.de`)
 
 Bei Exchange-Postfächern von IONOS/1&1 gibt es – anders als bei POP/IMAP – keine klassischen manuellen Server-/Port-Einstellungen zum Eintragen. Outlook richtet das Konto über **Autodiscover** ein.
