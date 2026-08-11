@@ -10,7 +10,7 @@
 - [x] Office 365 Family auf `info@allesausholz.de` registriert (PW in KeePass)
 - [x] OneDrive eingerichtet
 - [x] Backup eingerichtet
-- [x] Lexware eingerichtet, Kundenkonto angelegt (PW in KeePass)
+- [x] Lexware eingerichtet, Kundenkonto angelegt auf `info@allesausholzgmbh.de` (PW in KeePass)
 - [x] Samsung Drucker eingerichtet (IP: `192.168.2.5`)
 - [x] Samsung Scanner mit NAPS2 eingerichtet
 - [x] FritzBox Update (PW in KeePass)
