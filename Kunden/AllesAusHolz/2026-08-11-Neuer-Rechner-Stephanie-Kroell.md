@@ -19,6 +19,7 @@
 - [x] 1&1 (IONOS) Exchange `info@allesausholz.de` in Outlook eingerichtet
 - [x] Cloudflare registriert auf `info@allesausholzgmbh.de` (PW in KeePass)
 - [ ] Kreditkarte für Cloudflare R2 Storage hinterlegen
+- [x] Outlook-Signatur eingerichtet
 
 ## Yahoo Mail in Outlook (`allesausholz@yahoo.de`)
 
@@ -129,6 +130,35 @@ Bei Exchange-Postfächern von IONOS/1&1 gibt es – anders als bei POP/IMAP – 
 | Postfach | `info_archiv@allesausholzgmbh.de` | `e564911416@1.exchange.1and1.eu` | ✅ | ✅ | ✅ |
 | Postfach | `ipcam@allesausholzgmbh.de` | – | ✅ | ✅ | ✅ |
 | Postfach | `webmaster@allesausholzgmbh.de` | `info@allesausholzgmbh.de` | ✅ | ✅ | ✅ |
+
+## Outlook-Signatur
+
+```
+Freundliche Grüße aus Echzell
+
+i.A. Stephanie Kröhl
+
+Alles aus Holz GmbH
+Michael Braun
+Bisseser Str. 22 b
+61209 Echzell
+Tel.  06008 91 73 500
+Fax. 06008 91 73 502
+Mail:  info@allesausholzgmbh.de
+```
+
+## Windows „Freigeben" öffnet neues statt klassisches Outlook
+
+**Problem:** Wird eine Datei per Rechtsklick → „Freigeben" geteilt, erscheint als Ziel nur „Outlook (neu)" bzw. die Windows-Mail-App – nicht das klassische Outlook.
+
+**Ursache:** Bekannte Windows-Einschränkung, keine Fehlkonfiguration. Die „Freigeben"-Funktion nutzt eine moderne Windows-Schnittstelle (Share-Contract), die klassisches Outlook technisch nicht unterstützt. Eine offizielle Möglichkeit, klassisches Outlook dort einzubinden, gibt es laut Microsoft aktuell nicht.
+
+**Workaround:** Statt „Freigeben" die ältere Funktion nutzen:
+
+1. Rechtsklick auf die Datei
+2. „Senden an" → „E-Mail-Empfänger"
+
+Das läuft über MAPI und öffnet zuverlässig das klassische Outlook – vorausgesetzt, es ist als Standard-Mailprogramm hinterlegt: Einstellungen → Apps → Standard-Apps → „Standard-Apps nach Linktyp auswählen" → `MAILTO` → „Outlook" (ohne Zusatz „Neu") auswählen.
 
 ## Notfall-/Wiederherstellungskonten (Break Glass)
 
