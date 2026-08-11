@@ -57,9 +57,11 @@ Bei Exchange-Postfächern von IONOS/1&1 gibt es – anders als bei POP/IMAP – 
 **Benutzername/Login:** volle E-Mail-Adresse `info@allesausholz.de`
 **Passwort:** normales Postfach-Passwort (PW in KeePass) – kein App-Passwort nötig, anders als bei Yahoo
 
-**Falls Autodiscover nicht automatisch funktioniert:**
+**Falls Autodiscover nicht automatisch funktioniert (manuelle Einrichtung):**
 
-- Erweiterte Optionen → „Ich möchte mein Konto manuell einrichten" wählen, Outlook fragt danach trotzdem die Exchange-Autodiscover-Adresse ab (keine freie IMAP/SMTP-Eingabe möglich)
+- Erweiterte Optionen → „Ich möchte mein Konto manuell einrichten" wählen
+- Im Dialog „Wählen Sie Ihren Kontotyp aus" erscheinen drei Optionen: **Microsoft 365**, **POP oder IMAP**, **Exchange ActiveSync**
+- Hier **„Exchange ActiveSync"** auswählen (nicht „Microsoft 365"!) und `info@allesausholz.de` eintragen – das IONOS-Postfach ist kein Microsoft-365-/Exchange-Online-Konto, auch wenn die gleiche Adresse für Office 365 Family registriert ist
 - Prüfen, ob der DNS-Autodiscover-Eintrag der Domain `allesausholz.de` korrekt auf IONOS zeigt
 - Alternativ im IONOS-Kundenkonto/Hilfe-Center nachsehen oder IONOS-Support kontaktieren
 
@@ -74,9 +76,9 @@ Ist beim Einrichten des Exchange-Kontos aufgetreten. Wahrscheinliche Ursache: `i
 **Lösungsschritte (der Reihe nach probieren):**
 
 1. Konto entfernen und über „Erweiterte Optionen" → „Ich möchte mein Konto manuell einrichten" neu hinzufügen, damit Outlook nicht automatisch Richtung Microsoft 365 rät
-2. Windows-Anmeldeinformationsverwaltung (Systemsteuerung → Benutzerkonten → Anmeldeinformationsverwaltung) öffnen und alle gespeicherten Zugangsdaten zu `info@allesausholz.de` bzw. `outlook.office365.com` entfernen, danach Outlook neu starten
-3. Falls weiterhin Probleme: neues Outlook-Profil anlegen (Systemsteuerung → Mail → Profile anzeigen → Hinzufügen) und Konto darin neu einrichten
-4. Bei der manuellen Einrichtung sicherstellen, dass tatsächlich „Exchange" (IONOS) und nicht „Outlook.com"/Microsoft 365 als Kontotyp ausgewählt wird
+2. Im Dialog „Wählen Sie Ihren Kontotyp aus" **„Exchange ActiveSync"** statt der voreingestellten Option „Microsoft 365" wählen (siehe Screenshot-Beschreibung oben) – das war die Ursache des Fehlers
+3. Windows-Anmeldeinformationsverwaltung (Systemsteuerung → Benutzerkonten → Anmeldeinformationsverwaltung) öffnen und alle gespeicherten Zugangsdaten zu `info@allesausholz.de` bzw. `outlook.office365.com` entfernen, danach Outlook neu starten
+4. Falls weiterhin Probleme: neues Outlook-Profil anlegen (Systemsteuerung → Mail → Profile anzeigen → Hinzufügen) und Konto darin neu einrichten
 
 **Quelle:** [Microsoft Q&A – „Microsoft365 Single Abo, Die Aktion kann nicht abgeschlossen werden..."](https://learn.microsoft.com/de-de/answers/questions/4697726/microsoft365-single-abo-die-aktion-kann-nicht-abge)
 
