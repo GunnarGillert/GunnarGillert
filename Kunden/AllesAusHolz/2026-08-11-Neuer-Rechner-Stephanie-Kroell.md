@@ -57,32 +57,38 @@ Bei Exchange-Postfächern von IONOS/1&1 gibt es – anders als bei POP/IMAP – 
 **Benutzername/Login:** volle E-Mail-Adresse `info@allesausholz.de`
 **Passwort:** normales Postfach-Passwort (PW in KeePass) – kein App-Passwort nötig, anders als bei Yahoo
 
-**Falls Autodiscover nicht automatisch funktioniert (manuelle Einrichtung):**
-
-- Erweiterte Optionen → „Ich möchte mein Konto manuell einrichten" wählen
-- Im Dialog „Wählen Sie Ihren Kontotyp aus" erscheinen drei Optionen: **Microsoft 365**, **POP oder IMAP**, **Exchange ActiveSync**
-- Hier **„Exchange ActiveSync"** auswählen (nicht „Microsoft 365"!) und `info@allesausholz.de` eintragen – das IONOS-Postfach ist kein Microsoft-365-/Exchange-Online-Konto, auch wenn die gleiche Adresse für Office 365 Family registriert ist
-- **E-Mail-Server:** `1.exchange.1and1.eu` (ohne `https://`)
-- Benutzername: volle E-Mail-Adresse `info@allesausholz.de`, Passwort: normales Postfach-Passwort (PW in KeePass)
-- Prüfen, ob der DNS-Autodiscover-Eintrag der Domain `allesausholz.de` korrekt auf IONOS zeigt
-- Alternativ im IONOS-Kundenkonto/Hilfe-Center nachsehen oder IONOS-Support kontaktieren
-
 **Quellen:**
 - [IONOS Hilfe-Center – Microsoft Exchange einrichten](https://www.ionos.com/help/email/index-for-microsoftr-exchange-articles/setting-up-microsoftr-exchange/setting-up-microsoft-exchanger/)
 - [IONOS Hilfe-Center – Exchange in klassischem Outlook (M365) einrichten](https://www.ionos.com/help/email/index-for-microsoftr-exchange-articles/setting-up-microsoftr-exchange/setting-up-microsoft-exchanger-in-classic-outlook-microsoft-365/)
 
 ### Fehler beim Einrichten: „Die Aktion kann nicht abgeschlossen werden. Der Name stimmt mit keinem Namen in der Adressliste überein."
 
-Ist beim Einrichten des Exchange-Kontos aufgetreten. Wahrscheinliche Ursache: `info@allesausholz.de` ist gleichzeitig als Microsoft-365-Family-Konto registriert (siehe oben). Outlooks Autodiscover erkennt die Adresse dadurch als Microsoft-365-/Exchange-Online-Konto und versucht, sie gegen das dortige Adressbuch (GAL) aufzulösen – das eigentliche Postfach liegt aber bei IONOS, nicht in Exchange Online. Daher die Namensauflösung-Fehlermeldung.
+**Ursache:** `info@allesausholz.de` ist gleichzeitig als Microsoft-365-Family-Konto registriert (siehe oben). Outlook fragt beim automatischen Einrichten zuerst immer den fest hinterlegten Office-365-Autodiscover-Endpunkt ab, bevor es den eigenen (IONOS-)Autodiscover-Eintrag der Domain nutzt. Weil unter derselben Adresse ein Microsoft-365-Konto existiert, aber kein Exchange-Online-Postfach, schlägt die Namensauflösung gegen die dortige Adressliste (GAL) fehl. Das ist ein bekanntes Problem bei Domains, die parallel für ein privates Microsoft-365-Abo *und* ein gehostetes Exchange-Postfach woanders (hier: IONOS) genutzt werden.
 
-**Lösungsschritte (der Reihe nach probieren):**
+**Sackgasse (bereits ausprobiert, funktioniert nicht):** Manuelle Einrichtung → Kontotyp „Exchange ActiveSync" mit Server `1.exchange.1and1.eu` → führt zu „Der Server wurde nicht gefunden". Grund: Outlook unterstützt den Kontotyp „Exchange ActiveSync" laut Microsoft grundsätzlich nicht für echte Exchange-Postfächer (auch nicht bei IONOS) – dieser Kontotyp ist nur für ActiveSync-kompatible Fremddienste gedacht, nicht für echtes Exchange/EWS. Diesen Weg nicht weiterverfolgen.
 
-1. Konto entfernen und über „Erweiterte Optionen" → „Ich möchte mein Konto manuell einrichten" neu hinzufügen, damit Outlook nicht automatisch Richtung Microsoft 365 rät
-2. Im Dialog „Wählen Sie Ihren Kontotyp aus" **„Exchange ActiveSync"** statt der voreingestellten Option „Microsoft 365" wählen (siehe Screenshot-Beschreibung oben) – das war die Ursache des Fehlers
-3. Windows-Anmeldeinformationsverwaltung (Systemsteuerung → Benutzerkonten → Anmeldeinformationsverwaltung) öffnen und alle gespeicherten Zugangsdaten zu `info@allesausholz.de` bzw. `outlook.office365.com` entfernen, danach Outlook neu starten
-4. Falls weiterhin Probleme: neues Outlook-Profil anlegen (Systemsteuerung → Mail → Profile anzeigen → Hinzufügen) und Konto darin neu einrichten
+**Tatsächliche Lösung – Office-365-Autodiscover-Abfrage per Registry deaktivieren** (offizieller IONOS-Fix für genau dieses Szenario):
 
-**Quelle:** [Microsoft Q&A – „Microsoft365 Single Abo, Die Aktion kann nicht abgeschlossen werden..."](https://learn.microsoft.com/de-de/answers/questions/4697726/microsoft365-single-abo-die-aktion-kann-nicht-abge)
+1. Falls gerade ein Konto-Setup-Versuch offen ist: abbrechen bzw. das fehlgeschlagene Konto in Outlook wieder entfernen
+2. `Win + R` → `regedit` eingeben → Enter
+3. Zum Schlüssel navigieren: `HKEY_CURRENT_USER\Software\Microsoft\Office\16.0\Outlook\AutoDiscover` (Schlüssel `AutoDiscover` ggf. unter `Outlook` neu anlegen, falls er fehlt)
+4. Rechtsklick → Neu → DWORD-Wert (32-Bit)
+5. Namen vergeben: `ExcludeExplicitO365Endpoint`, Wert auf `1` belassen/setzen
+6. Outlook vollständig schließen (auch im Task-Manager prüfen, dass es nicht mehr läuft) und neu starten
+7. Konto erneut hinzufügen: `info@allesausholz.de` eingeben, Kontotyp **„Microsoft 365"** wählen (das ist bei modernem Outlook weiterhin der richtige Weg für Exchange-Protokoll-Konten, auch für IONOS – nicht „Exchange ActiveSync") und Passwort eingeben
+8. Outlook sollte den Office-365-Endpunkt jetzt überspringen und korrekt per Autodiscover auf `1.exchange.1and1.eu` verbinden
+
+**Falls danach immer noch Probleme auftreten:**
+
+- Windows-Anmeldeinformationsverwaltung (Systemsteuerung → Benutzerkonten → Anmeldeinformationsverwaltung) öffnen und gespeicherte Zugangsdaten zu `info@allesausholz.de` bzw. `outlook.office365.com` entfernen
+- Prüfen, ob unter Windows-Einstellungen → Konten → „Auf Arbeit oder Schule zugreifen" bzw. „E-Mail & Konten" bereits ein Konto für `info@allesausholz.de` hinterlegt ist, und dieses ggf. entfernen
+- Neues Outlook-Profil anlegen (Systemsteuerung → Mail → Profile anzeigen → Hinzufügen) und Konto darin neu einrichten
+- IONOS-Support kontaktieren, falls weiterhin keine Verbindung zustande kommt
+
+**Quellen:**
+- [IONOS Hilfe-Center – Deactivating Autodiscover for Microsoft 365 in Outlook](https://www.ionos.com/help/email/index-for-microsoftr-exchange-articles/setting-up-microsoftr-exchange/deactivating-autodiscover-for-microsoft-365-in-outlook/)
+- [Microsoft Learn – Outlook kann ActiveSync nicht zum Verbinden von Exchange verwenden](https://learn.microsoft.com/de-de/troubleshoot/outlook/profiles-and-accounts/outlook-cannot-use-activesync-connect-exchange)
+- [Microsoft Q&A – „Microsoft365 Single Abo, Die Aktion kann nicht abgeschlossen werden..."](https://learn.microsoft.com/de-de/answers/questions/4697726/microsoft365-single-abo-die-aktion-kann-nicht-abge)
 
 ## Notizen
 
