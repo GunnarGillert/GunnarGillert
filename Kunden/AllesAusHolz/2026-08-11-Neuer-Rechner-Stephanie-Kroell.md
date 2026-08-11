@@ -114,7 +114,7 @@ Bei Exchange-Postfächern von IONOS/1&1 gibt es – anders als bei POP/IMAP – 
 ## 1&1 (IONOS) Kundendaten
 
 - **Kundennummer (KD-Nummer)** für 1&1-Exchange und Homepage: `583805328`
-- **Passwort:** liegt in PassKee
+- **Passwort:** liegt in KeePass
 
 ### E-Mail-Adressen unter `allesausholzgmbh.de`
 
