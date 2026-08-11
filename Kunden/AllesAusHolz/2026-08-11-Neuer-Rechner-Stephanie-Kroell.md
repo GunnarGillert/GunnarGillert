@@ -17,6 +17,8 @@
 - [x] Avast Business Hub für Viren- und Patchmanagement, `info@allesausholzgmbh.de` (PW in KeePass)
 - [x] Passwort für `allesausholz@yahoo.de` in KeePass ablegen
 - [x] 1&1 (IONOS) Exchange `info@allesausholz.de` in Outlook eingerichtet
+- [x] Cloudflare registriert auf `info@allesausholzgmbh.de` (PW in KeePass)
+- [ ] Kreditkarte für Cloudflare R2 Storage hinterlegen
 
 ## Yahoo Mail in Outlook (`allesausholz@yahoo.de`)
 
