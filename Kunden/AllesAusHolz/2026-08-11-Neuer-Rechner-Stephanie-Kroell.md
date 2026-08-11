@@ -62,6 +62,8 @@ Bei Exchange-Postfächern von IONOS/1&1 gibt es – anders als bei POP/IMAP – 
 - Erweiterte Optionen → „Ich möchte mein Konto manuell einrichten" wählen
 - Im Dialog „Wählen Sie Ihren Kontotyp aus" erscheinen drei Optionen: **Microsoft 365**, **POP oder IMAP**, **Exchange ActiveSync**
 - Hier **„Exchange ActiveSync"** auswählen (nicht „Microsoft 365"!) und `info@allesausholz.de` eintragen – das IONOS-Postfach ist kein Microsoft-365-/Exchange-Online-Konto, auch wenn die gleiche Adresse für Office 365 Family registriert ist
+- **E-Mail-Server:** `1.exchange.1and1.eu` (ohne `https://`)
+- Benutzername: volle E-Mail-Adresse `info@allesausholz.de`, Passwort: normales Postfach-Passwort (PW in KeePass)
 - Prüfen, ob der DNS-Autodiscover-Eintrag der Domain `allesausholz.de` korrekt auf IONOS zeigt
 - Alternativ im IONOS-Kundenkonto/Hilfe-Center nachsehen oder IONOS-Support kontaktieren
 
