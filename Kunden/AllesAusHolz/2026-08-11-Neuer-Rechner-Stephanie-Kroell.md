@@ -16,6 +16,7 @@
 - [x] FritzBox Update (PW in KeePass)
 - [x] Avast Business Hub für Viren- und Patchmanagement, `info@allesausholzgmbh.de` (PW in KeePass)
 - [x] Passwort für `allesausholz@yahoo.de` in KeePass ablegen
+- [x] 1&1 (IONOS) Exchange `info@allesausholz.de` in Outlook eingerichtet
 
 ## Yahoo Mail in Outlook (`allesausholz@yahoo.de`)
 
@@ -61,7 +62,7 @@ Bei Exchange-Postfächern von IONOS/1&1 gibt es – anders als bei POP/IMAP – 
 - [IONOS Hilfe-Center – Microsoft Exchange einrichten](https://www.ionos.com/help/email/index-for-microsoftr-exchange-articles/setting-up-microsoftr-exchange/setting-up-microsoft-exchanger/)
 - [IONOS Hilfe-Center – Exchange in klassischem Outlook (M365) einrichten](https://www.ionos.com/help/email/index-for-microsoftr-exchange-articles/setting-up-microsoftr-exchange/setting-up-microsoft-exchanger-in-classic-outlook-microsoft-365/)
 
-### Fehler beim Einrichten: „Die Aktion kann nicht abgeschlossen werden. Der Name stimmt mit keinem Namen in der Adressliste überein."
+### Fehler beim Einrichten: „Die Aktion kann nicht abgeschlossen werden. Der Name stimmt mit keinem Namen in der Adressliste überein." (behoben)
 
 **Ursache:** `info@allesausholz.de` ist gleichzeitig als Microsoft-365-Family-Konto registriert (siehe oben). Outlook fragt beim automatischen Einrichten zuerst immer den fest hinterlegten Office-365-Autodiscover-Endpunkt ab, bevor es den eigenen (IONOS-)Autodiscover-Eintrag der Domain nutzt. Weil unter derselben Adresse ein Microsoft-365-Konto existiert, aber kein Exchange-Online-Postfach, schlägt die Namensauflösung gegen die dortige Adressliste (GAL) fehl. Das ist ein bekanntes Problem bei Domains, die parallel für ein privates Microsoft-365-Abo *und* ein gehostetes Exchange-Postfach woanders (hier: IONOS) genutzt werden.
 
@@ -77,6 +78,8 @@ Bei Exchange-Postfächern von IONOS/1&1 gibt es – anders als bei POP/IMAP – 
 6. Outlook vollständig schließen (auch im Task-Manager prüfen, dass es nicht mehr läuft) und neu starten
 7. Konto erneut hinzufügen: `info@allesausholz.de` eingeben, Kontotyp **„Microsoft 365"** wählen (das ist bei modernem Outlook weiterhin der richtige Weg für Exchange-Protokoll-Konten, auch für IONOS – nicht „Exchange ActiveSync") und Passwort eingeben
 8. Outlook sollte den Office-365-Endpunkt jetzt überspringen und korrekt per Autodiscover auf `1.exchange.1and1.eu` verbinden
+
+✅ Fix hat funktioniert – Konto ist erfolgreich eingerichtet.
 
 **Falls danach immer noch Probleme auftreten:**
 
