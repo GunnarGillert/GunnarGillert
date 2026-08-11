@@ -11,12 +11,11 @@
 - [x] OneDrive eingerichtet
 - [x] Backup eingerichtet
 - [x] Lexware eingerichtet, Kundenkonto angelegt (PW in KeePass)
-- [ ] Samsung Drucker
-- [x] Samsung Scanner mit NAPS2 eingerichtet (IP: `192.168.2.5`)
+- [x] Samsung Drucker eingerichtet (IP: `192.168.2.5`)
+- [x] Samsung Scanner mit NAPS2 eingerichtet
 - [x] FritzBox Update (PW in KeePass)
 - [x] Avast Business Hub für Viren- und Patchmanagement, `info@allesausholzgmbh.de` (PW in KeePass)
 
 ## Notizen
 
 - Alle vergebenen Passwörter sind in KeePass hinterlegt.
-- Offener Punkt: Samsung Drucker muss noch eingerichtet werden.
