@@ -80,7 +80,7 @@ param(
     [switch]$AutoReboot,
 
     [Parameter()]
-    [string]$LogFolder = (Join-Path $PSScriptRoot 'Logs')
+    [string]$LogFolder
 )
 
 # Domaenencontroller werden nie automatisch neu gestartet, unabhaengig von -AutoReboot.
@@ -89,6 +89,19 @@ $DomainControllers = @(
     'W22DC2.drkbuedingen.local'
     'w2k12dc.drkbuedingen.local'
 )
+
+if (-not $LogFolder) {
+    # $PSScriptRoot ist leer, wenn das Skript nicht als Datei ausgefuehrt wird
+    # (z. B. per Copy&Paste in die Konsole oder "Run Selection" in der ISE).
+    $scriptRoot = $PSScriptRoot
+    if (-not $scriptRoot -and $MyInvocation.MyCommand.Path) {
+        $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+    }
+    if (-not $scriptRoot) {
+        $scriptRoot = (Get-Location).Path
+    }
+    $LogFolder = Join-Path $scriptRoot 'Logs'
+}
 
 if (-not (Test-Path -Path $LogFolder)) {
     New-Item -Path $LogFolder -ItemType Directory -Force | Out-Null
