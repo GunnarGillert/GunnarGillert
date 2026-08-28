@@ -5,13 +5,18 @@
 // liegen (DATA_DIR) - Aufbau bewusst analog zu Parkwerk.
 //
 // Prototyp-Stand: Startseite (Kennzahlen), Auftrags-, Kunden- und
-// Fensterbauerverwaltung mit Suche/Filter. Login, Mailversand, KI-Anbindung,
-// PDF/E-Rechnung und der Eingangs-Ordner-Watcher aus der Skizze
-// (Energiewerk/README.md) sind hier noch NICHT umgesetzt.
+// Fensterbauerverwaltung mit Suche/Filter, Unterlagen-Upload am Vorgang mit
+// automatischer Erkennung (Dateiname, bei Bedarf PDF-Textebene/OCR + KI-
+// Vorschlag). Login, Mailversand, PDF/E-Rechnung und der eigenständige
+// Eingangs-Ordner-Watcher aus der Skizze (Energiewerk/README.md) sind hier
+// noch NICHT umgesetzt.
 // ============================================================================
 
 require("dotenv").config();
 const express = require("express");
+const multer = require("multer");
+const { PDFParse } = require("pdf-parse");
+const { createWorker } = require("tesseract.js");
 const fs = require("fs");
 const fsp = fs.promises;
 const path = require("path");
@@ -27,11 +32,36 @@ const COLLECTIONS_DIR = path.join(DATA_DIR, "collections");
 const FENSTERBAUER_DIR = path.join(COLLECTIONS_DIR, "fensterbauer");
 const KUNDEN_DIR = path.join(COLLECTIONS_DIR, "kunden");
 const VORGAENGE_DIR = path.join(COLLECTIONS_DIR, "vorgaenge");
+const DOKUMENTE_DIR = path.join(COLLECTIONS_DIR, "dokumente");
+const LOGS_DIR = path.join(DATA_DIR, "logs");
+const DEBUG_LOG_PATH = path.join(LOGS_DIR, "debug.log");
 const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
 
-for (const dir of [DATA_DIR, COLLECTIONS_DIR, FENSTERBAUER_DIR, KUNDEN_DIR, VORGAENGE_DIR]) {
+for (const dir of [DATA_DIR, COLLECTIONS_DIR, FENSTERBAUER_DIR, KUNDEN_DIR, VORGAENGE_DIR, DOKUMENTE_DIR, LOGS_DIR]) {
   fs.mkdirSync(dir, { recursive: true });
 }
+
+// tesseract.js wirft einen Netzwerkfehler beim (Nach-)Laden der
+// Sprachdaten standardmäßig unbehandelt (asynchron außerhalb der
+// umgebenden Promise) - ohne dieses Sicherheitsnetz würde ein einzelner
+// OCR-Versuch ohne Internetzugriff den ganzen Server abschießen. Selbes
+// Problem und derselbe Fix wie bei Parkwerk.
+process.on("uncaughtException", (fehler) => {
+  console.error("Unerwarteter Fehler (Server läuft weiter):", fehler);
+  fs.appendFile(DEBUG_LOG_PATH, `${new Date().toISOString()} [uncaughtException] ${fehler.message}\n`, () => {});
+});
+process.on("unhandledRejection", (fehler) => {
+  console.error("Unerwartete abgelehnte Promise (Server läuft weiter):", fehler);
+  fs.appendFile(DEBUG_LOG_PATH, `${new Date().toISOString()} [unhandledRejection] ${fehler?.message || fehler}\n`, () => {});
+});
+
+function debugLog(bereich, nachricht) {
+  const zeile = `${new Date().toISOString()} [${bereich}] ${nachricht}`;
+  console.log(zeile);
+  fs.appendFile(DEBUG_LOG_PATH, zeile + "\n", () => {});
+}
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 // ----------------------------------------------------------------------------
 // Datei-basierte Collections (wie bei Parkwerk: ein JSON pro Datensatz)
@@ -61,7 +91,7 @@ async function leseEinstellungen() {
   try {
     return JSON.parse(await fsp.readFile(SETTINGS_PATH, "utf8"));
   } catch {
-    return { naechsteFallnummer: 1, fallnummernPraefix: "EW" };
+    return { naechsteFallnummer: 1, fallnummernPraefix: "EW", anthropicApiKey: "" };
   }
 }
 
@@ -112,6 +142,154 @@ function enthaeltText(werte, suchtext) {
 }
 
 // ----------------------------------------------------------------------------
+// Automatische Dokumenttyp-Erkennung beim Upload (Namenskonvention aus
+// README.md: "<Dokumenttyp>_<VorgangsID>_<Datum>.pdf" - hier bewusst als
+// Schlüsselwort-Suche im gesamten Dateinamen umgesetzt, nicht nur als
+// striktes Präfix, damit auch abweichend benannte Scans (z. B. vom
+// Scanner vergebene Namen) noch erkannt werden. Reihenfolge ist wichtig:
+// spezifischere Begriffe (z. B. "zuwendungsbescheid") müssen vor
+// allgemeineren ("bescheid") geprüft werden.
+// ----------------------------------------------------------------------------
+const DOKUMENTTYPEN = [
+  "Angebot", "Antrag", "Bescheid", "Rechnung", "Zahlungsnachweis",
+  "Verwendungsnachweis", "Festsetzungsbescheid", "Sonstiges",
+];
+
+const ERKENNUNGS_REIHENFOLGE = [
+  ["zuwendungsbescheid", "Bescheid"],
+  ["festsetzungsbescheid", "Festsetzungsbescheid"],
+  ["verwendungsnachweis", "Verwendungsnachweis"],
+  ["zahlungsnachweis", "Zahlungsnachweis"],
+  ["projektbeschreibung", "Antrag"],
+  ["angebot", "Angebot"],
+  ["antrag", "Antrag"],
+  ["bescheid", "Bescheid"],
+  ["rechnung", "Rechnung"],
+];
+
+function erkenneDokumenttyp(dateiname) {
+  const name = dateiname.toLowerCase();
+  for (const [schluesselwort, typ] of ERKENNUNGS_REIHENFOLGE) {
+    if (name.includes(schluesselwort)) return typ;
+  }
+  return null;
+}
+
+function sichererDateiname(dateiname) {
+  return dateiname.replace(/[^A-Za-z0-9._äöüÄÖÜß -]/g, "_");
+}
+
+function mitZeitlimit(promise, ms, fehlermeldung) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(fehlermeldung)), ms)),
+  ]);
+}
+
+// ----------------------------------------------------------------------------
+// Textauszug aus der hochgeladenen Datei - für Dateien, deren Typ sich
+// nicht schon am Dateinamen erkennen ließ, als Grundlage für den
+// KI-Vorschlag. Reihenfolge wie bei Parkwerks Kundenantworten-Texterkennung:
+// bei PDFs zuerst die eingebettete Textebene (funktioniert ohne
+// Internetzugang), erst bei Bildern direkt OCR. Eine reine Scan-PDF ohne
+// Textebene wird in diesem Prototyp NICHT zusätzlich gerastert/per OCR
+// gelesen (siehe "Bekannte Grenzen" in der README) - das bräuchte eine
+// zusätzliche PDF-Rasterisierung, die hier bewusst ausgespart wurde.
+// ----------------------------------------------------------------------------
+async function extrahiereText(buffer, dateiname) {
+  const nameKlein = dateiname.toLowerCase();
+  if (nameKlein.endsWith(".pdf")) {
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const ergebnis = await parser.getText();
+      const text = (ergebnis.text || "").replace(/^--\s*\d+\s*of\s*\d+\s*--$/gm, "").trim();
+      if (text.length > 20) return { text: text.slice(0, 4000), fehler: null };
+      return { text: "", fehler: "Kein Text in der PDF-Textebene gefunden (vermutlich reiner Scan ohne OCR-Rasterisierung in diesem Prototyp)." };
+    } catch (fehler) {
+      debugLog("ocr", `PDF-Textebene konnte nicht gelesen werden: ${fehler.message}`);
+      return { text: "", fehler: `PDF konnte nicht gelesen werden: ${fehler.message}` };
+    } finally {
+      await parser.destroy().catch(() => {});
+    }
+  }
+  if (/\.(jpe?g|png)$/i.test(nameKlein)) {
+    let worker;
+    try {
+      // Feste Zeitgrenze zusätzlich zum globalen Sicherheitsnetz oben:
+      // tesseract.js meldet einen fehlenden Internetzugriff beim
+      // Sprachdaten-Download teils nicht als normale Promise-Ablehnung,
+      // sondern als unbehandeltes Worker-Event - ohne Zeitlimit würde die
+      // Anfrage sonst unbegrenzt hängen bleiben.
+      worker = await mitZeitlimit(createWorker("deu"), 15000, "Zeitlimit beim Initialisieren der Texterkennung überschritten.");
+      const { data } = await mitZeitlimit(worker.recognize(buffer), 30000, "Zeitlimit bei der Texterkennung überschritten.");
+      return { text: (data.text || "").trim().slice(0, 4000), fehler: null };
+    } catch (fehler) {
+      debugLog("ocr", `OCR fehlgeschlagen (evtl. kein Internetzugriff für Sprachdaten): ${fehler.message}`);
+      return { text: "", fehler: `Texterkennung (OCR) fehlgeschlagen (evtl. kein Internetzugriff für Sprachdaten): ${fehler.message}` };
+    } finally {
+      if (worker) await worker.terminate().catch(() => {});
+    }
+  }
+  return { text: "", fehler: "Für diesen Dateityp gibt es in diesem Prototyp keine Texterkennung." };
+}
+
+async function fetchMitZeitlimit(url, optionen, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...optionen, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// KI-Vorschlag für den Dokumenttyp, wenn die Dateinamen-Erkennung nichts
+// gefunden hat - wie bei Parkwerks KI-Textvorschlag ausschließlich
+// serverseitig über die Anthropic-API, der Key verlässt den Server nie.
+// ----------------------------------------------------------------------------
+async function holeKiVorschlag(text, dateiname) {
+  const einstellungen = await leseEinstellungen();
+  const apiKey = einstellungen.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { typ: null, begruendung: null, fehler: "Kein Claude-API-Key hinterlegt (Einstellungen bzw. ANTHROPIC_API_KEY)." };
+  if (!text) return { typ: null, begruendung: null, fehler: "Kein Text aus der Datei extrahierbar." };
+
+  try {
+    const antwort = await fetchMitZeitlimit("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 300,
+        messages: [{
+          role: "user",
+          content: `Dateiname: "${dateiname}"\n\nTextauszug aus der Datei:\n"""\n${text}\n"""\n\n` +
+            `Welcher der folgenden Dokumenttypen passt am besten: ${DOKUMENTTYPEN.join(", ")}? ` +
+            `Antworte AUSSCHLIESSLICH mit einem JSON-Objekt der Form ` +
+            `{"typ": "einer der genannten Dokumenttypen", "begruendung": "ein Satz"} ohne weiteren Text.`,
+        }],
+      }),
+    }, 20000);
+
+    if (!antwort.ok) {
+      return { typ: null, begruendung: null, fehler: `Claude-API antwortete mit HTTP ${antwort.status}.` };
+    }
+    const daten = await antwort.json();
+    const rohtext = daten.content?.[0]?.text || "";
+    const treffer = rohtext.match(/\{[\s\S]*\}/);
+    if (!treffer) return { typ: null, begruendung: null, fehler: "Antwort der KI enthielt kein auswertbares JSON." };
+
+    const geparst = JSON.parse(treffer[0]);
+    if (!DOKUMENTTYPEN.includes(geparst.typ)) {
+      return { typ: null, begruendung: geparst.begruendung || null, fehler: "KI schlug einen nicht vorgesehenen Dokumenttyp vor." };
+    }
+    return { typ: geparst.typ, begruendung: geparst.begruendung || "", fehler: null };
+  } catch (fehler) {
+    return { typ: null, begruendung: null, fehler: `KI-Anfrage fehlgeschlagen: ${fehler.message}` };
+  }
+}
+
+// ----------------------------------------------------------------------------
 // Beispieldaten (nur beim allerersten Start, wenn noch nichts angelegt ist -
 // damit sich der Prototyp sofort ausprobieren lässt)
 // ----------------------------------------------------------------------------
@@ -146,6 +324,7 @@ async function seedFallsLeer() {
       bescheid: { betrag: 3200, datum: vorTagen(35) },
       rechnung: { betrag: 3200, faelligkeitsdatum: vorTagen(5), zahlungsstatus: "offen" },
       verwendungsnachweisFrist: inTagen(60),
+      dokumente: [],
       historie: [{ wer: "System", was: "Vorgang angelegt", wann: vorTagen(50) }],
     },
     {
@@ -155,6 +334,7 @@ async function seedFallsLeer() {
       bescheid: { betrag: 5100, datum: vorTagen(85) },
       rechnung: { betrag: 5100, faelligkeitsdatum: vorTagen(60), zahlungsstatus: "bezahlt" },
       verwendungsnachweisFrist: vorTagen(3),
+      dokumente: [],
       historie: [{ wer: "System", was: "Vorgang angelegt", wann: vorTagen(100) }],
     },
     {
@@ -164,6 +344,7 @@ async function seedFallsLeer() {
       bescheid: null,
       rechnung: null,
       verwendungsnachweisFrist: null,
+      dokumente: [],
       historie: [{ wer: "System", was: "Vorgang angelegt", wann: vorTagen(4) }],
     },
     {
@@ -173,6 +354,7 @@ async function seedFallsLeer() {
       bescheid: { betrag: 4400, datum: vorTagen(190) },
       rechnung: { betrag: 4400, faelligkeitsdatum: vorTagen(170), zahlungsstatus: "bezahlt" },
       verwendungsnachweisFrist: vorTagen(90),
+      dokumente: [],
       historie: [{ wer: "System", was: "Vorgang angelegt", wann: vorTagen(210) }],
     },
   ];
@@ -301,6 +483,7 @@ app.post("/api/vorgaenge", async (req, res) => {
   const v = {
     id, bafaVorgangsId: "", kundeId, fensterbauerId, status: "eingang",
     uWertPruefung: null, bescheid: null, rechnung: null, verwendungsnachweisFrist: null,
+    dokumente: [],
     historie: [{ wer: "Sachbearbeiter", was: "Vorgang angelegt", wann: new Date().toISOString().slice(0, 10) }],
   };
   await schreibe(VORGAENGE_DIR, v.id, v);
@@ -325,6 +508,96 @@ app.patch("/api/vorgaenge/:id", async (req, res) => {
 });
 
 // ----------------------------------------------------------------------------
+// API: Unterlagen-Upload am Vorgang - automatische Erkennung des
+// Dokumenttyps aus dem Dateinamen (s. erkenneDokumenttyp oben), Ablage
+// unter collections/dokumente/<VorgangsID>/. Wird der Typ nicht erkannt,
+// landet das Dokument trotzdem im Vorgang (Typ "unbekannt") und muss über
+// PATCH .../dokumente/:dokumentId manuell zugeordnet werden - analog zu
+// Parkwerks Import-Diagnose ("klar anzeigen statt stillschweigend
+// ignorieren", siehe README.md).
+// ----------------------------------------------------------------------------
+app.post("/api/vorgaenge/:id/dokumente", upload.single("datei"), async (req, res) => {
+  const v = await leseEins(VORGAENGE_DIR, req.params.id);
+  if (!v) return res.status(404).json({ fehler: "Vorgang nicht gefunden." });
+  if (!req.file) return res.status(400).json({ fehler: "Keine Datei empfangen." });
+
+  const dokumentId = crypto.randomUUID();
+  const heute = new Date().toISOString().slice(0, 10);
+  const erkannterTyp = erkenneDokumenttyp(req.file.originalname);
+  const gespeicherterDateiname = `${dokumentId}_${sichererDateiname(req.file.originalname)}`;
+  const zielOrdner = path.join(DOKUMENTE_DIR, v.id);
+
+  await fsp.mkdir(zielOrdner, { recursive: true });
+  await fsp.writeFile(path.join(zielOrdner, gespeicherterDateiname), req.file.buffer);
+
+  // Dateiname allein reicht nicht zur Erkennung -> Text extrahieren
+  // (PDF-Textebene bzw. OCR bei Bildern) und einen KI-Vorschlag einholen.
+  // Läuft bewusst NACH dem Speichern der Datei, damit ein langsamer/
+  // fehlschlagender KI-Aufruf den eigentlichen Upload nicht verhindert.
+  let kiVorschlag = null;
+  if (!erkannterTyp) {
+    const { text, fehler: extraktionsFehler } = await extrahiereText(req.file.buffer, req.file.originalname);
+    kiVorschlag = text
+      ? await holeKiVorschlag(text, req.file.originalname)
+      : { typ: null, begruendung: null, fehler: extraktionsFehler };
+  }
+
+  const dokument = {
+    id: dokumentId,
+    dateiname: req.file.originalname,
+    gespeicherterDateiname,
+    typ: erkannterTyp || "unbekannt",
+    groesse: req.file.size,
+    hochgeladenAm: heute,
+    kiVorschlag,
+  };
+  v.dokumente = v.dokumente || [];
+  v.dokumente.push(dokument);
+
+  let historieText;
+  if (erkannterTyp) {
+    historieText = `Dokument "${req.file.originalname}" hochgeladen (automatisch erkannt als "${erkannterTyp}")`;
+  } else if (kiVorschlag?.typ) {
+    historieText = `Dokument "${req.file.originalname}" hochgeladen (Dateiname nicht erkannt, KI schlägt anhand des Inhalts "${kiVorschlag.typ}" vor)`;
+  } else {
+    historieText = `Dokument "${req.file.originalname}" hochgeladen (Typ nicht erkannt, kein KI-Vorschlag möglich: ${kiVorschlag?.fehler || "unbekannter Grund"}) - manuelle Zuordnung nötig`;
+  }
+  v.historie.push({ wer: "Sachbearbeiter", was: historieText, wann: heute });
+
+  await schreibe(VORGAENGE_DIR, v.id, v);
+  res.status(201).json(mitFlags(v));
+});
+
+app.patch("/api/vorgaenge/:id/dokumente/:dokumentId", async (req, res) => {
+  const v = await leseEins(VORGAENGE_DIR, req.params.id);
+  if (!v) return res.status(404).json({ fehler: "Vorgang nicht gefunden." });
+  const dokument = (v.dokumente || []).find((d) => d.id === req.params.dokumentId);
+  if (!dokument) return res.status(404).json({ fehler: "Dokument nicht gefunden." });
+  const { typ } = req.body;
+  if (!DOKUMENTTYPEN.includes(typ)) return res.status(400).json({ fehler: "Unbekannter Dokumenttyp." });
+
+  const heute = new Date().toISOString().slice(0, 10);
+  dokument.typ = typ;
+  v.historie.push({
+    wer: "Sachbearbeiter",
+    was: `Dokumenttyp von "${dokument.dateiname}" manuell auf "${typ}" gesetzt`,
+    wann: heute,
+  });
+  await schreibe(VORGAENGE_DIR, v.id, v);
+  res.json(mitFlags(v));
+});
+
+app.get("/api/vorgaenge/:id/dokumente/:dokumentId/datei", async (req, res) => {
+  const v = await leseEins(VORGAENGE_DIR, req.params.id);
+  if (!v) return res.status(404).json({ fehler: "Vorgang nicht gefunden." });
+  const dokument = (v.dokumente || []).find((d) => d.id === req.params.dokumentId);
+  if (!dokument) return res.status(404).json({ fehler: "Dokument nicht gefunden." });
+  res.download(path.join(DOKUMENTE_DIR, v.id, dokument.gespeicherterDateiname), dokument.dateiname);
+});
+
+app.get("/api/dokumenttypen", (req, res) => res.json(DOKUMENTTYPEN));
+
+// ----------------------------------------------------------------------------
 // API: Startseite / Dashboard
 // ----------------------------------------------------------------------------
 app.get("/api/dashboard", async (req, res) => {
@@ -341,6 +614,13 @@ app.get("/api/dashboard", async (req, res) => {
       .sort((a, b) => b.wann.localeCompare(a.wann))
       .slice(0, 8),
   });
+});
+
+app.use((fehler, req, res, next) => {
+  if (fehler instanceof multer.MulterError) {
+    return res.status(400).json({ fehler: `Upload fehlgeschlagen: ${fehler.message}` });
+  }
+  next(fehler);
 });
 
 // ----------------------------------------------------------------------------

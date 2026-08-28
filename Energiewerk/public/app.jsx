@@ -120,6 +120,11 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen }) {
   const [vorgaenge, setVorgaenge] = useState([]);
   const [ausgewaehlterVorgang, setAusgewaehlterVorgang] = useState(null);
   const [fehler, setFehler] = useState("");
+  const [dokumenttypen, setDokumenttypen] = useState([]);
+  const [hochladeLaeuft, setHochladeLaeuft] = useState(false);
+  const [hochladeFehler, setHochladeFehler] = useState("");
+
+  useEffect(() => { ladeJson("/api/dokumenttypen").then(setDokumenttypen).catch(() => {}); }, []);
 
   useEffect(() => {
     if (!startFilter) return;
@@ -163,6 +168,34 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen }) {
     });
     await oeffneVorgang(ausgewaehlterVorgang.id);
     laden();
+  }
+
+  async function dateiHochladen(e) {
+    const datei = e.target.files[0];
+    e.target.value = "";
+    if (!datei) return;
+    setHochladeFehler("");
+    setHochladeLaeuft(true);
+    try {
+      const formular = new FormData();
+      formular.append("datei", datei);
+      await ladeJson(`/api/vorgaenge/${ausgewaehlterVorgang.id}/dokumente`, { method: "POST", body: formular });
+      await oeffneVorgang(ausgewaehlterVorgang.id);
+    } catch (fehler) {
+      setHochladeFehler(fehler.message);
+    } finally {
+      setHochladeLaeuft(false);
+    }
+  }
+
+  async function dokumenttypSetzen(dokumentId, typ) {
+    if (!typ) return;
+    await ladeJson(`/api/vorgaenge/${ausgewaehlterVorgang.id}/dokumente/${dokumentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ typ }),
+    });
+    await oeffneVorgang(ausgewaehlterVorgang.id);
   }
 
   return (
@@ -247,6 +280,47 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen }) {
               <button className="aktion sekundaer" onClick={markiereBezahlt}>Als bezahlt markieren</button>
             )}
           </div>
+
+          <h3>Unterlagen</h3>
+          <div>
+            <input type="file" onChange={dateiHochladen} disabled={hochladeLaeuft} />
+            {hochladeLaeuft && <span> Wird hochgeladen und geprüft (Dateiname, ggf. Textebene/OCR + KI-Vorschlag) …</span>}
+          </div>
+          {hochladeFehler && <div className="leer">Fehler: {hochladeFehler}</div>}
+
+          {(ausgewaehlterVorgang.dokumente || []).length === 0 && (
+            <div className="leer">Noch keine Unterlagen hochgeladen.</div>
+          )}
+          {(ausgewaehlterVorgang.dokumente || []).map((d) => (
+            <div className="historie-eintrag" key={d.id}>
+              <div>
+                <a href={`/api/vorgaenge/${ausgewaehlterVorgang.id}/dokumente/${d.id}/datei`} target="_blank" rel="noreferrer">
+                  {d.dateiname}
+                </a>{" "}
+                <span className={`badge ${d.typ === "unbekannt" ? "unbekannt" : "status"}`}>{d.typ}</span>{" "}
+                <span style={{ color: "#5c6b66" }}>{formatDatum(d.hochgeladenAm)}, {(d.groesse / 1024).toFixed(0)} KB</span>
+              </div>
+              {d.typ === "unbekannt" && (
+                <div style={{ marginTop: 4 }}>
+                  {d.kiVorschlag?.typ ? (
+                    <span>
+                      KI-Vorschlag: <strong>{d.kiVorschlag.typ}</strong>
+                      {d.kiVorschlag.begruendung ? ` — ${d.kiVorschlag.begruendung}` : ""}{" "}
+                      <button className="aktion sekundaer" style={{ padding: "2px 8px", fontSize: 12 }} onClick={() => dokumenttypSetzen(d.id, d.kiVorschlag.typ)}>
+                        Übernehmen
+                      </button>
+                    </span>
+                  ) : (
+                    <span style={{ color: "#5c6b66" }}>Kein KI-Vorschlag möglich{d.kiVorschlag?.fehler ? ` (${d.kiVorschlag.fehler})` : ""}.</span>
+                  )}{" "}
+                  <select onChange={(e) => dokumenttypSetzen(d.id, e.target.value)} value="">
+                    <option value="">oder Typ manuell wählen …</option>
+                    {dokumenttypen.filter((t) => t !== "unbekannt").map((t) => <option value={t} key={t}>{t}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+          ))}
 
           <h3>Historie</h3>
           {ausgewaehlterVorgang.historie.map((h, i) => (

@@ -7,8 +7,10 @@ Rechnungsstellung und (soweit zulässig automatisiert) Kommunikation.
 
 **Status:** Konzept-Skizze, dazu ein erster lauffähiger **Prototyp**
 (`server.js` + `public/`) mit Startseite, Auftrags-, Kunden- und
-Fensterbauerverwaltung inkl. Suche/Filter, gefüllt mit Beispieldaten.
-Login, Mailversand, KI-Anbindung, PDF/E-Rechnung und der
+Fensterbauerverwaltung inkl. Suche/Filter, gefüllt mit Beispieldaten, sowie
+einem Unterlagen-Upload direkt am Vorgang mit automatischer
+Dokumenttyp-Erkennung (Dateiname, bei Bedarf PDF-Textebene/OCR + KI-
+Vorschlag). Login, Mailversand, PDF/E-Rechnung und der eigenständige
 Eingangs-Ordner-Watcher aus dieser Skizze sind im Prototyp noch **nicht**
 umgesetzt. Lokal starten:
 
@@ -309,6 +311,50 @@ Rechnung + Mails). Bereits verarbeitete Dateien werden wie beim
 Arivo-Import in einer Verarbeitungs-Liste vermerkt, damit ein erneuter
 Sync (OneDrive-Konflikt, doppeltes Ablegen) nichts doppelt auslöst.
 
+### Unterlagen-Upload am Vorgang (im Prototyp umgesetzt)
+
+Ergänzend zum künftigen, noch nicht umgesetzten `eingang/`-Ordner-Watcher
+oben gibt es im Prototyp bereits einen direkten Upload in der
+Vorgangs-Detailansicht (`POST /api/vorgaenge/:id/dokumente`), der
+dieselbe Erkennungsidee sofort nutzbar macht, ohne auf SharePoint-Sync
+zu warten:
+
+1. **Dateiname-Erkennung zuerst**: Schlüsselwort-Suche im gesamten
+   Dateinamen (nicht nur als striktes Präfix, damit auch abweichend
+   benannte Scans erkannt werden), spezifischere Begriffe vor
+   allgemeineren geprüft (z. B. "zuwendungsbescheid" vor "bescheid").
+2. **Kein Treffer → Textauszug + KI-Vorschlag**: Bei PDFs wird zuerst die
+   eingebettete Textebene gelesen (`pdf-parse`, funktioniert ohne
+   Internetzugang), bei Bildern (JPG/PNG) direkt per OCR (`tesseract.js`).
+   Der Textauszug geht an einen serverseitigen Claude-Aufruf (Key nie im
+   Client, wie Parkwerks „KI-Textvorschlag"), der einen Dokumenttyp
+   vorschlägt.
+3. **Kein Vorschlag möglich → klar anzeigen statt stillschweigend
+   ignorieren** (wie Parkwerks Import-Diagnose): Das Dokument landet
+   trotzdem am Vorgang (Typ „unbekannt"), inkl. Grund (kein API-Key, kein
+   Text extrahierbar, OCR ohne Internetzugriff, …), und lässt sich über
+   ein Dropdown manuell zuordnen (`PATCH .../dokumente/:dokumentId`).
+
+**Bekannte Grenze im Prototyp:** Eine reine Scan-PDF ohne eingebettete
+Textebene wird **nicht** zusätzlich gerastert und per OCR gelesen (das
+bräuchte eine PDF-Rasterisierung wie bei Parkwerks
+Halterantwort-OCR/`getScreenshot`) – sie landet als „unbekannt" und muss
+manuell zugeordnet werden. Ebenso lädt `tesseract.js` deutsche
+Sprachdaten beim ersten Gebrauch aus dem Internet nach; ohne
+Internetzugriff zu diesem Zeitpunkt schlägt die Texterkennung fehl (mit
+Zeitlimit statt Absturz/Hänger, s. u.) – identische, bereits bei
+Parkwerk dokumentierte Einschränkung.
+
+**Beim Testen reproduziert und behoben:** `tesseract.js` wirft einen
+fehlenden Internetzugriff beim Sprachdaten-Download nicht als normale
+Promise-Ablehnung, sondern als unbehandeltes Worker-Event – ohne
+Gegenmaßnahme hätte das den ganzen Server abgeschossen. Behoben über
+dieselbe Kombination wie bei Parkwerk: ein globales
+`process.on("uncaughtException"/"unhandledRejection")`-Sicherheitsnetz
+plus ein hartes Zeitlimit um den OCR-Aufruf, damit eine einzelne Anfrage
+auch ohne Internetzugriff in absehbarer Zeit mit einer sauberen
+Fehlermeldung endet statt unbegrenzt zu hängen.
+
 ### KI-Anbindung (zwei Verwendungen, ein Proxy)
 
 Wie bei Parkwerks „KI-Textvorschlag" läuft die Anthropic-API ausschließlich
@@ -320,9 +366,9 @@ serverseitig über `/api/claude`; der Key steht nie im Client.
    wird **immer** als Protokoll gespeichert (nicht nur angezeigt) –
    das ist der Compliance-Nachweis.
 2. **Bescheid-Parsing**: Prompt/Extraktion aus dem gescannten
-   Zuwendungsbescheid (Name, Betrag, Vorgangs-ID), analog zu Parkwerks
-   PDF-Textebene-zuerst/OCR-Fallback-Ansatz bei Kundenantworten
-   (`pdf-parse` zuerst, `tesseract.js` nur falls kein Text erkennbar).
+   Zuwendungsbescheid (Name, Betrag, Vorgangs-ID) - dieselbe
+   Textauszug-Grundlage wie beim Unterlagen-Upload oben lässt sich hierfür
+   wiederverwenden, sobald der Bescheid als Dokument am Vorgang hängt.
 
 ### Rollen
 
