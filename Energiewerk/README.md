@@ -5,7 +5,19 @@ Fensterbauer-Kunden von Maler Luft systematisiert: von der Stammdatenpflege
 über die BAFA-Antragstellung und U-Wert-Prüfung bis zu Zuwendungsbescheid,
 Rechnungsstellung und (soweit zulässig automatisiert) Kommunikation.
 
-**Status: Konzept-Skizze, noch keine Implementierung.**
+**Status:** Konzept-Skizze, dazu ein erster lauffähiger **Prototyp**
+(`server.js` + `public/`) mit Startseite, Auftrags-, Kunden- und
+Fensterbauerverwaltung inkl. Suche/Filter, gefüllt mit Beispieldaten.
+Login, Mailversand, KI-Anbindung, PDF/E-Rechnung und der
+Eingangs-Ordner-Watcher aus dieser Skizze sind im Prototyp noch **nicht**
+umgesetzt. Lokal starten:
+
+```
+cd Energiewerk
+npm install     # baut dabei automatisch die Oberfläche (esbuild)
+npm start       # http://localhost:4000, Beispieldaten werden beim ersten
+                # Start automatisch angelegt (Energiewerk-Daten/)
+```
 
 Aufbau bewusst **analog zu Parkwerk**
 (`GunnarGillert/Maler_Luft/Parkraumprogramm`), also derselbe Baukasten:

@@ -1,0 +1,24 @@
+{
+  "name": "energiewerk-lokal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prototyp: BAFA-Förderprozessverwaltung für Fensterbauer (Maler Luft) - Startseite, Auftrags-, Kunden- und Fensterbauerverwaltung",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build": "esbuild public/entry.jsx --bundle --outfile=public/bundle.js --platform=browser --jsx=automatic",
+    "postinstall": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.5"
+  }
+}

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Energiewerk</title>
+  <style>
+    :root {
+      --bg: #f4f6f5;
+      --karte: #ffffff;
+      --rand: #dfe4e2;
+      --text: #1f2a27;
+      --text-schwach: #5c6b66;
+      --gruen: #1f6f52;
+      --gruen-hell: #e6f2ec;
+      --rot: #b3261e;
+      --rot-hell: #fbe9e8;
+      --gelb: #8a6d1a;
+      --gelb-hell: #fbf1dc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      background: var(--gruen);
+      color: white;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+    header .untertitel { font-size: 12px; opacity: 0.85; }
+    nav {
+      display: flex;
+      gap: 4px;
+      background: var(--karte);
+      border-bottom: 1px solid var(--rand);
+      padding: 0 20px;
+    }
+    nav button {
+      border: none;
+      background: none;
+      padding: 12px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      color: var(--text-schwach);
+      border-bottom: 2px solid transparent;
+    }
+    nav button.aktiv {
+      color: var(--gruen);
+      border-bottom-color: var(--gruen);
+      font-weight: 600;
+    }
+    main { padding: 20px 24px; max-width: 1200px; margin: 0 auto; }
+    .kacheln { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+    .kachel {
+      background: var(--karte);
+      border: 1px solid var(--rand);
+      border-radius: 8px;
+      padding: 14px 18px;
+      min-width: 170px;
+      flex: 1;
+      cursor: pointer;
+    }
+    .kachel:hover { border-color: var(--gruen); }
+    .kachel .zahl { font-size: 26px; font-weight: 700; }
+    .kachel .label { font-size: 12px; color: var(--text-schwach); }
+    .kachel.warnung { background: var(--rot-hell); border-color: #e6b6b3; }
+    .kachel.warnung .zahl { color: var(--rot); }
+    .suchleiste { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+    input[type="text"], select {
+      padding: 8px 10px;
+      border: 1px solid var(--rand);
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    input[type="text"] { min-width: 260px; }
+    label.filter { font-size: 13px; display: flex; align-items: center; gap: 5px; color: var(--text-schwach); }
+    table { width: 100%; border-collapse: collapse; background: var(--karte); border: 1px solid var(--rand); border-radius: 8px; overflow: hidden; }
+    th, td { text-align: left; padding: 9px 12px; font-size: 13.5px; border-bottom: 1px solid var(--rand); }
+    th { background: #fafbfa; color: var(--text-schwach); font-weight: 600; }
+    tr.klickbar { cursor: pointer; }
+    tr.klickbar:hover { background: #f6f9f7; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
+    .badge.ueberfaellig { background: var(--rot-hell); color: var(--rot); }
+    .badge.status { background: var(--gruen-hell); color: var(--gruen); }
+    .karte-panel { background: var(--karte); border: 1px solid var(--rand); border-radius: 8px; padding: 16px 20px; margin-top: 14px; }
+    .karte-panel h3 { margin-top: 0; }
+    .schliessen { float: right; background: none; border: none; cursor: pointer; color: var(--text-schwach); font-size: 13px; }
+    .feld-zeile { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 6px; }
+    .feld { font-size: 13.5px; }
+    .feld .label { color: var(--text-schwach); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em; }
+    button.aktion {
+      background: var(--gruen);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      margin-right: 8px;
+      margin-top: 8px;
+    }
+    button.aktion.sekundaer { background: white; color: var(--gruen); border: 1px solid var(--gruen); }
+    .leer { color: var(--text-schwach); font-size: 13.5px; padding: 20px; text-align: center; }
+    .historie-eintrag { font-size: 13px; padding: 4px 0; border-bottom: 1px dashed var(--rand); }
+    .form-neu { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .form-neu input, .form-neu select { flex: 1; min-width: 150px; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script src="bundle.js"></script>
+</body>
+</html>

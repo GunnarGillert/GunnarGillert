@@ -1,0 +1,7 @@
+# In .env umbenennen und anpassen.
+# DATA_DIR: Ordner für die Falldaten (später ein SharePoint/OneDrive-Pfad,
+# siehe README.md). Ohne Angabe wird lokal "./Energiewerk-Daten" verwendet.
+DATA_DIR=
+
+# Port, unter dem der Prototyp lokal erreichbar ist.
+PORT=4000
