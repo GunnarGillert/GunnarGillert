@@ -4,10 +4,20 @@ Skizze für ein Programm, das den wiederkehrenden BAFA-Förderprozess für die
 Fensterbauer-Kunden von Maler Luft systematisiert: von der Stammdatenpflege
 über die BAFA-Antragstellung und U-Wert-Prüfung bis zu Zuwendungsbescheid,
 Rechnungsstellung und (soweit zulässig automatisiert) Kommunikation.
-Aufbau und Aufteilung orientieren sich an **Parkwerk** (gleiches Baukasten-
-Prinzip: Stammdaten ↔ Vorgang ↔ Dokumente ↔ Automatisierung).
 
 **Status: Konzept-Skizze, noch keine Implementierung.**
+
+Aufbau bewusst **analog zu Parkwerk**
+(`GunnarGillert/Maler_Luft/Parkraumprogramm`), also derselbe Baukasten:
+ein einzelner Node.js/Express-Server + React-Oberfläche, **keine
+Datenbank**, sondern datei-basierte JSON-Collections in einem geteilten
+SharePoint/OneDrive-Ordner, bcrypt-Nutzerkonten mit Rollen, PDF-Erzeugung
+aus Vorlagen mit Platzhaltern, ein serverseitiger Claude-API-Proxy und
+Windows-Dienst-/Update-Mechanik. Der Grund, dieses Muster zu übernehmen:
+Es ist bei Maler Luft bereits im Einsatz, bekannt und gewartet (ein
+Node-Prozess, ein Datenordner, ein Update-Weg) – Energiewerk muss dieses
+Rad nicht neu erfinden, sondern denselben Rahmen mit anderen Feldern und
+Vorlagen füllen.
 
 ## Warum
 
@@ -41,76 +51,164 @@ Portal-Restriktionen zu verletzen.
    Kunden; Auszahlung.
 
 Schritt 3 und 8 sind Portal-Pflichtschritte ohne Automatisierungsoption –
-alle anderen Schritte sind Automatisierungskandidaten.
+alle anderen Schritte sind Automatisierungskandidaten, analog zu den
+Mahnstufen bei Parkwerk (dort: Import → Fall → Halterabfrage → Anschreiben
+→ Zahlungsabgleich, hier: Eingang → Vorgang → Antrag → Bescheid →
+Rechnung → Verwendungsnachweis).
 
 ## Kernentitäten (Datenmodell)
 
+Wie bei Parkwerk (dort: `faelle`) ist der **Vorgang** die zentrale
+Klammer – jedes Dokument, jede Mail und jede Rechnung hängt eindeutig an
+genau einem Vorgang, jeder Vorgang eindeutig an genau einem Kunden und
+einem Fensterbauer.
+
 ```
 Fensterbauer               Kunde
-  - ID, Name, Kürzel         - ID, Name, Adresse, Kontakt (E-Mail)
-  - Kontakt (E-Mail/CC)      - Fensterbauer-ID (FK)
-  - Aktiv/Inaktiv
+  - id, Name, Kürzel         - id, Vorname, Nachname, Firma
+  - Kontakt (E-Mail To/CC)   - Adresse, E-Mail, Telefon
+  - Aktiv/Inaktiv            - fensterbauerId (FK)
         \                    /
          \                  /
               Vorgang (Förderfall)
-              - ID (= BAFA-Vorgangs-/Projekt-ID sobald vorhanden)
-              - Kunde-ID (FK), Fensterbauer-ID (FK)
-              - Status (Enum, siehe unten)
-              - Angebots-U-Werte + Prüfergebnis (Referenz auf Protokoll)
-              - Bescheid-Betrag, Bescheid-Datum
-              - Rechnungs-ID (FK), Verwendungsnachweis-Status
+              - id (Fallnummer, z. B. EW-2026-00042 - eigener
+                Nummernkreis wie bei Parkwerk, Präfix/Zähler in
+                settings.json)
+              - bafaVorgangsId (sobald aus Projektbeschreibung bekannt)
+              - kundeId (FK), fensterbauerId (FK)
+              - status (Enum, siehe unten)
+              - uWertPruefung { ergebnis, protokollDokumentId, geprueftAm }
+              - bescheid { betrag, datum, dokumentId }
+              - rechnungId (FK)
+              - verwendungsnachweisStatus, verwendungsnachweisFrist
+              - historie[] (wer/was/wann - wie Parkwerks Fall-Historie)
                     |
-                    ├── Dokument[] (typisiert, siehe Ablage unten)
-                    ├── Rechnung[] (E-Rechnungsformat)
+                    ├── Dokument[]   (typisiert, siehe Ablage unten)
+                    ├── Rechnung[]   (E-Rechnungsformat)
                     └── Versandprotokoll[] (wer/was/wann/Freigabe durch wen)
 ```
 
-**Vorgangsstatus (Enum)**: `Eingang` → `Stammdaten_angelegt` →
-`Projektbeschreibung_erstellt` → `Antrag_gestellt` →
-`U_Wert_geprueft` → `Vergabe_mitgeteilt` → `Bescheid_erhalten` →
-`Rechnung_versendet` → `Umsetzung` → `Verwendungsnachweis_eingereicht` →
-`Festgesetzt` → `Ausgezahlt` (plus `Abgebrochen`/`Nachfrage_offen` als
-Ausnahmepfade).
+**Vorgangsstatus (Enum)**: `eingang` → `stammdaten_angelegt` →
+`projektbeschreibung_erstellt` → `antrag_gestellt` → `u_wert_geprueft` →
+`vergabe_mitgeteilt` → `bescheid_erhalten` → `rechnung_versendet` →
+`umsetzung` → `verwendungsnachweis_eingereicht` → `festgesetzt` →
+`ausgezahlt` (plus `abgebrochen`/`nachfrage_offen` als Ausnahmepfade).
 
-Der Vorgang ist die zentrale Klammer – jedes Dokument, jede Mail und jede
-Rechnung hängt eindeutig an genau einem Vorgang, jeder Vorgang eindeutig an
-genau einem Kunden und einem Fensterbauer.
+## Technischer Aufbau (wie Parkwerk)
 
-## Systemkomponenten
+| Baustein | Wie bei Parkwerk umgesetzt | Für Energiewerk übernommen |
+|---|---|---|
+| Server | Node.js (≥18) + Express, ein einzelner Prozess | gleich |
+| Oberfläche | React als SPA, mit `esbuild` zu `bundle.js` gebaut (`npm install` baut automatisch) | gleich |
+| Datenhaltung | keine Datenbank, JSON-Dateien pro Datensatz in `DATA_DIR` (geteilter SharePoint/OneDrive-Ordner) | gleich |
+| Login | `users.json`, nur bcrypt-Hashes, `express-session` | gleich |
+| Rollen | Administrator / Bearbeiter, serverseitig durchgesetzt (nicht nur UI) | Administrator / Sachbearbeiter / **Freigeber** (neu, s. u.) |
+| PDF-Erzeugung | `pdf-lib`, Vorlagen mit `{{platzhalter}}`, gemeinsamer Briefkopf/Fußzeile-Code | gleich (Antrag-Begleitschreiben, Bescheid-Weiterleitung, Rechnung) |
+| E-Mail-Versand | `nodemailer` gegen das bestehende Postfach (SMTP, bei Parkwerk Strato) | gleich für den Versand; **zusätzlich IMAP-APPEND** in den „Gesendet"-Ordner des Postfachs, damit versendete Mails im normalen Mail-Client sichtbar sind (siehe offene Frage unten) |
+| KI-Anbindung | serverseitiger Proxy `/api/claude`, Key nur serverseitig (`settings.json`/`.env`), nie im Client | gleich, zwei Verwendungen: U-Wert-Prüfung, Bescheid-Parsing |
+| Dokument-Import | Arivo-ZIP per (S)FTP/API, idempotent über eindeutige ID, Feld-Mapping mit Fallback-Namen | Scan-/Upload-Ordner in `DATA_DIR`, idempotent über Dateiname (Dokumenttyp + Vorgangs-ID), s. u. |
+| Backup | tägliches Cloud-Backup zu fester Uhrzeit (R2) | gleich |
+| Betrieb | Windows-Dienst (`node-windows`) oder Autostart, HTTPS über Caddy/selbstsigniertes Zertifikat | gleich |
+| Update | `Update.bat` zieht neuesten Commit aus konfiguriertem GitHub-Repo/Unterordner | gleich, Unterordner `Energiewerk` statt `Parkraumprogramm` |
+| Protokollierung | `audit.log` (wer hat was geändert), `debug.log` (technisch), Client-Fehler zusätzlich ans Server-Log | gleich, `audit.log` dient hier zugleich als BAFA-Compliance-Nachweis für U-Wert-Prüfung und Versand |
 
-| Komponente | Aufgabe |
-|---|---|
-| **Stammdatenregister** | Fensterbauer-Liste (aktuell 3), Kunden-Liste, Zuordnung, E-Mail-Verteiler (To/CC je Fensterbauer) |
-| **Dokumentablage (SharePoint)** | Zentrale Quelle für Angebote, Anträge, Bescheide, Rechnungen; Upload/Scan als Event-Trigger |
-| **KI-Modul** | (a) U-Wert-Prüfung Angebot vs. BAFA-Merkblatt, inkl. Prüfprotokoll als Nachweis; (b) Bescheid-Parsing (Name, Betrag, Vorgangs-ID) |
-| **Automatisierungs-/Workflow-Engine** | Reagiert auf Dokument-Ereignisse (z. B. "Bescheid erkannt" → Rechnung + Mails generieren), führt Statuswechsel im Vorgang nach |
-| **Kommunikationsmodul** | IMAP-basierter Versand, Text-Templates + PDF-Anhänge, Freigabe-Schalter (manuell/straight-through) |
-| **Rechnungsmodul** | Erstellung PDF im E-Rechnungsformat (ZUGFeRD/XRechnung-konform), Betrag aus Bescheid oder Vorkalkulation |
-| **Portal-Interaktionsschicht** | Nur Statuspflege/Ablage der Portal-Ergebnisse (ID, PDF-Exporte); **kein** automatisierter Zugriff auf das BAFA-Portal, insbesondere nicht beim Verwendungsnachweis |
-
-## Ablage- und Namenskonvention (SharePoint)
-
-Vorschlag, damit Event-Trigger und KI-Suche zuverlässig funktionieren:
+### Projektstruktur (Vorschlag)
 
 ```
-/Energiewerk
-  /01_Fensterbauer
-    /<Fensterbauer-Kürzel>/
-  /02_Vorgaenge
-    /<VorgangsID>_<Kundenname>/
-      Angebot_<VorgangsID>.pdf
-      Antrag_<VorgangsID>.pdf
-      Bescheid_<VorgangsID>.pdf
-      Rechnung_<VorgangsID>.pdf
-      Zahlungsnachweis_<VorgangsID>.pdf
-      Verwendungsnachweis_<VorgangsID>.pdf
-      Protokoll_UWert_<VorgangsID>.pdf
+energiewerk-lokal/
+  Start.bat / Start.ps1 / Start-Hidden.vbs
+  Service-Install.bat / Service-Uninstall.bat
+  Client-Install.bat / Client-Install.ps1
+  Caddyfile.beispiel
+  server.js          Node-Server: Login, Dokument-Erkennung, Vorgangs-
+                      verwaltung, PDF, E-Rechnung, Mailversand, Claude-Proxy
+  package.json
+  _env.example
+  public/
+    index.html
+    app.jsx / entry.jsx / bundle.js
+
+Energiewerk-Daten/ (Datenordner, DATA_DIR in .env, im SharePoint/
+                     OneDrive-synchronisierten Bereich)
+  settings.json       Firmendaten, Fensterbauer-Liste, Mail-/IMAP-
+                       Zugangsdaten-Referenz, Nummernkreis, KI-Prompt-
+                       Vorlagen (U-Wert-Prüfung, Bescheid-Parsing)
+  users.json          Benutzerkonten (bcrypt)
+  .session-secret
+  eingang/            Scan-/Upload-Ordner - hier landen neue Angebote/
+                       Bescheide, werden erkannt und einsortiert
+  collections/
+    fensterbauer/*.json
+    kunden/*.json
+    vorgaenge/*.json
+    dokumente/*.pdf        Angebote, Anträge, Bescheide (Originale)
+    rechnungen/*.pdf|xml   E-Rechnung (PDF + eingebettetes XRechnung/
+                            ZUGFeRD-XML)
+    protokolle/*.json      U-Wert-Prüfprotokolle (KI-Ergebnis + Prompt +
+                            Merkblattversion, als Nachweis)
+    vorlagen/*.json        Mailtexte, Anschreiben, Rechnungslayout
+  logs/
+    audit.log
+    debug.log
+    backup.log
 ```
 
-Feste Regel: **Dateiname beginnt immer mit Dokumenttyp, endet immer mit der
-Vorgangs-ID.** Das macht den Dateinamen selbst zum Trigger-Schlüssel
-(Dokumenttyp) und zum Verknüpfungsschlüssel (Vorgangs-ID), unabhängig vom
-Ordner.
+### Ablage- und Namenskonvention im Eingangs-Ordner
+
+Analog zu Parkwerks Arivo-Import (idempotent über eine eindeutige ID)
+läuft die Erkennung über den Dateinamen, nicht über den Ordner:
+
+```
+<Dokumenttyp>_<VorgangsID>_<Datum>.pdf
+Angebot_EW-2026-00042_2026-08-01.pdf
+Bescheid_EW-2026-00042_2026-08-20.pdf
+```
+
+Regel: **Dateiname beginnt mit Dokumenttyp, enthält immer die
+Vorgangs-ID.** Ein Datei-Watcher/Polling auf `eingang/` (wie Parkwerks
+periodischer FTP-Import) erkennt neue Dateien, ordnet sie per Vorgangs-ID
+zu, verschiebt sie nach `collections/dokumente/` und löst je nach Typ die
+passende Automatisierung aus (z. B. `Bescheid_...` → Bescheid-Parsing →
+Rechnung + Mails). Bereits verarbeitete Dateien werden wie beim
+Arivo-Import in einer Verarbeitungs-Liste vermerkt, damit ein erneuter
+Sync (OneDrive-Konflikt, doppeltes Ablegen) nichts doppelt auslöst.
+
+### KI-Anbindung (zwei Verwendungen, ein Proxy)
+
+Wie bei Parkwerks „KI-Textvorschlag" läuft die Anthropic-API ausschließlich
+serverseitig über `/api/claude`; der Key steht nie im Client.
+
+1. **U-Wert-Prüfung**: Prompt aus Angebots-U-Werten + aktueller
+   BAFA-Merkblatt-Version (als Referenztext/Datei hinterlegt,
+   Vorlage editierbar wie Parkwerks KI-Textvorschlag-Prompt). Ergebnis
+   wird **immer** als Protokoll gespeichert (nicht nur angezeigt) –
+   das ist der Compliance-Nachweis.
+2. **Bescheid-Parsing**: Prompt/Extraktion aus dem gescannten
+   Zuwendungsbescheid (Name, Betrag, Vorgangs-ID), analog zu Parkwerks
+   PDF-Textebene-zuerst/OCR-Fallback-Ansatz bei Kundenantworten
+   (`pdf-parse` zuerst, `tesseract.js` nur falls kein Text erkennbar).
+
+### Rollen
+
+- **Administrator**: Einstellungen, Fensterbauer-/Nutzerverwaltung,
+  Protokolle, Backup/Update – wie bei Parkwerk.
+- **Sachbearbeiter**: Vorgänge, Stammdaten, Dokumente – wie Parkwerks
+  „Bearbeiter".
+- **Freigeber** (neu gegenüber Parkwerk): einzige Rolle, die automatisch
+  erzeugte Mails/Rechnungen tatsächlich freigibt/versendet, solange der
+  Freigabe-Schalter für den jeweiligen Mailtyp noch auf „manuell" steht.
+  Kann mit Sachbearbeiter kombiniert sein oder eigenständig vergeben
+  werden (z. B. wenn nur die Geschäftsleitung freigeben soll).
+
+### E-Rechnung
+
+PDF-Erzeugung wie bei Parkwerk über `pdf-lib` mit gemeinsamer
+Briefkopf-/Fußzeile-Funktion, zusätzlich eingebettetes strukturiertes
+Datenformat für die E-Rechnungspflicht (ZUGFeRD: XML in die PDF
+eingebettet, oder XRechnung als separates XML – Format hängt davon ab, ob
+Rechnungsempfänger B2B-Kunde oder öffentliche Stelle ist, siehe offene
+Frage unten). Betrag primär aus dem geparsten Bescheid, sonst aus
+Vorkalkulation im Vorgang.
 
 ## Automatisierungsgrad je Schritt
 
@@ -118,43 +216,34 @@ Ordner.
 |---|---|---|
 | Stammdaten anlegen | Auftragseingang | Teilautomatisch (Formular → Register) |
 | Technische Projektbeschreibung / Antrag | – | **Manuell** (BAFA-Portal) |
-| U-Wert-Prüfung | Angebot in Ablage | Automatisch (KI-Prüfung + Protokoll) |
+| U-Wert-Prüfung | Angebot in `eingang/` | Automatisch (KI-Prüfung + Protokoll) |
 | Mail "Vergabe möglich" | Antrag gestellt (Statuswechsel) | Automatisch, mit Freigabe-Schalter |
-| Bescheid-Erkennung | Scan/Upload Bescheid | Automatisch (KI-Parsing) |
+| Bescheid-Erkennung | Scan/Upload in `eingang/` | Automatisch (KI-Parsing) |
 | Bescheid-Versand an Kunde/Fensterbauer | Bescheid erkannt | Automatisch, mit Freigabe-Schalter |
 | Rechnungserstellung + Versand | Bescheid erkannt | Automatisch, mit Freigabe-Schalter |
 | Verwendungsnachweis | Nach Umsetzung | **Manuell** (BAFA-Portal), Frist-Erinnerung automatisch |
-
-## Rechte- und Versandlogik
-
-- **Rollen**: Sachbearbeiter (Stammdaten/Vorgänge pflegen), Freigeber
-  (schaltet automatisch generierte Mails/Rechnungen frei), Admin
-  (Stammdaten Fensterbauer/Vorlagen).
-- **To/CC-Logik**: automatisch aus Vorgang → Kunde-E-Mail (To) +
-  zugeordneter Fensterbauer (CC), fest über die Stammdaten-Zuordnung, nicht
-  manuell pro Mail gepflegt.
-- **Freigabe-Schalter** pro Mailtyp: Start konservativ (jede
-  automatisch generierte Mail geht zunächst in einen Freigabe-Posteingang),
-  später "Straight-Through" für nachweislich risikoarme Typen (z. B.
-  Eingangsbestätigung), niemals für Zahlungsrelevantes ohne Freigabe.
-- **Protokollpflicht**: jeder automatisierte Versand und jede U-Wert-Prüfung
-  wird revisionssicher protokolliert (wer/was/wann/Ergebnis) – dient als
-  Compliance-Nachweis gegenüber BAFA-Anforderungen.
 
 ## Risiken / offene Punkte
 
 - Fehlende oder uneinheitliche Stammdaten (Fensterbauer, Kunden) gefährden
   Zustellung und Zuordnung → Stammdatenregister ist Vorbedingung, nicht
   Nebenprodukt.
-- Uneinheitliche Ablage/Benennung erschwert KI-Trigger →
-  Namenskonvention muss vor Automatisierung stehen.
+- Uneinheitliche Ablage/Benennung im `eingang/`-Ordner erschwert die
+  automatische Erkennung → Namenskonvention muss vor Automatisierung
+  stehen (wie bei Parkwerks Import-Diagnose: klar anzeigen, wenn ein
+  Dateiname nicht erkannt wurde, statt es stillschweigend zu ignorieren).
 - E-Rechnungsformat muss rechtlich geprüfte Kriterien erfüllen (XRechnung/
-  ZUGFeRD-Vorgabe klären).
+  ZUGFeRD-Vorgabe klären, s. u.).
 - U-Wert-Prüfung per KI muss nachweisbar/regelkonform sein (Prompt +
   Merkblattversion + Ergebnis archivieren, nicht nur anzeigen).
 - Verwendungsnachweis bleibt manueller Engpass/Single Point of Failure →
-  eigene Kapazitätssteuerung/Fristen-Tracking nötig, losgelöst von der
-  Automatisierung der übrigen Schritte.
+  eigene Fristen-Tracking-Logik nötig, losgelöst von der Automatisierung
+  der übrigen Schritte.
+- Mehrere Fensterbauer/Sachbearbeiter schreiben gleichzeitig in denselben
+  SharePoint/OneDrive-Datenordner – dasselbe Konfliktrisiko wie bei
+  Parkwerk. Parkwerks eigene Lösung dafür (ein zentraler Server statt
+  „ein Programm pro PC") sollte Energiewerk von Anfang an übernehmen,
+  statt das Problem erst im Betrieb zu entdecken.
 
 ## Offene Fragen (vor Umsetzung zu klären)
 
@@ -162,17 +251,27 @@ Ordner.
 2. Aktuelle Version des BAFA-Merkblatts als KI-Referenzdokument, plus wie
    oft/wodurch sich das Merkblatt ändern kann.
 3. Konkrete Anforderung ans E-Rechnungsformat (XRechnung vs. ZUGFeRD,
-   Pflichtfelder).
-4. SharePoint-Standort/Bibliothek, in der `Energiewerk` angelegt werden
-   soll, und bestehende Berechtigungsgruppen.
-5. IMAP-Postfach für den Versand sowie gewünschter Freigabeprozess
-   (wer gibt frei, welcher Kanal – Teams/Mail/App).
-6. Wie weit Parkwerks bestehende Architektur (Code/Datenmodell) konkret
-   wiederverwendet werden soll bzw. kann, sobald sie verfügbar ist.
+   Pflichtfelder) – abhängig davon, ob Rechnungsempfänger die Kunden
+   (B2C) oder ggf. auch öffentliche Stellen sind.
+4. **"IMAP-basierter Mailversand"**: Ist damit gemeint, dass Versand
+   klassisch per SMTP läuft (wie bei Parkwerk/Strato) und die Mail
+   zusätzlich per IMAP-APPEND im „Gesendet"-Ordner des normalen
+   Postfachs sichtbar sein soll? Oder soll Energiewerk zusätzlich auch
+   das Postfach per IMAP **auslesen** (z. B. weil Bescheide teils per
+   Mail statt nur gescannt eingehen)? Das ändert den Zuschnitt des
+   Kommunikationsmoduls.
+5. SharePoint-Standort/Bibliothek, in der `Energiewerk-Daten` angelegt
+   werden soll (und ob sie – wie bei Parkwerk – lokal per OneDrive-Client
+   synchronisiert vorliegt, damit `DATA_DIR` direkt darauf zeigen kann).
+6. Sollen mehrere Fensterbauer/Mitarbeitende gleichzeitig zugreifen
+   können (→ zentraler Server-Betrieb wie bei Parkwerks „Server statt
+   lokal"-Modus, empfohlen) oder reicht ein Einzelplatz-Betrieb?
 
 ## Nächste Schritte (Vorschlag, nach Freigabe der Skizze)
 
-1. Phase 1: Stammdatenregister + Ordner-/Namenskonvention in SharePoint.
+1. Phase 1: Grundgerüst aus Parkwerk kopieren/anpassen (Server-Skelett,
+   Login/Rollen, Datenordner-Struktur), Stammdatenregister +
+   Namenskonvention für `eingang/`.
 2. Phase 2: Trigger "Bescheid erkannt" → automatische Rechnung + Mails
    (mit Freigabe-Schalter).
 3. Phase 3: KI-Pipeline U-Wert-Prüfung inkl. Prüfprotokoll.
