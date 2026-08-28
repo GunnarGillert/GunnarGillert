@@ -120,17 +120,17 @@ async function seedFallsLeer() {
   if (vorhandeneFensterbauer.length > 0) return;
 
   const fensterbauer = [
-    { id: crypto.randomUUID(), name: "Fenster Weber GmbH", kuerzel: "WEB", kontaktEmail: "buero@fenster-weber.example", aktiv: true },
-    { id: crypto.randomUUID(), name: "Schmidt Fensterbau", kuerzel: "SCH", kontaktEmail: "info@schmidt-fensterbau.example", aktiv: true },
-    { id: crypto.randomUUID(), name: "Hessen-Fenster Krause", kuerzel: "KRA", kontaktEmail: "kontakt@hessen-fenster-krause.example", aktiv: true },
+    { id: crypto.randomUUID(), vorname: "Thomas", nachname: "Weber", firma: "Fenster Weber GmbH", strasse: "Industriestraße 8", plz: "63654", ort: "Büdingen", telefon: "06042 88012", email: "buero@fenster-weber.example", bemerkungen: "", kuerzel: "WEB", aktiv: true },
+    { id: crypto.randomUUID(), vorname: "Sabine", nachname: "Schmidt", firma: "Schmidt Fensterbau", strasse: "Gewerbering 3", plz: "63667", ort: "Nidda", telefon: "06043 99021", email: "info@schmidt-fensterbau.example", bemerkungen: "", kuerzel: "SCH", aktiv: true },
+    { id: crypto.randomUUID(), vorname: "Frank", nachname: "Krause", firma: "Hessen-Fenster Krause", strasse: "Am Steinbruch 15", plz: "63636", ort: "Brachttal", telefon: "06054 71234", email: "kontakt@hessen-fenster-krause.example", bemerkungen: "Bevorzugt Rückrufe nach 14 Uhr.", kuerzel: "KRA", aktiv: true },
   ];
   for (const f of fensterbauer) await schreibe(FENSTERBAUER_DIR, f.id, f);
 
   const kunden = [
-    { id: crypto.randomUUID(), vorname: "Anna", nachname: "Becker", firma: "", strasse: "Marktstraße 4", plz: "63654", ort: "Büdingen", email: "anna.becker@example.com", telefon: "06042 1234", fensterbauerId: fensterbauer[0].id },
-    { id: crypto.randomUUID(), vorname: "Jürgen", nachname: "Hoffmann", firma: "", strasse: "Am Bahnhof 12", plz: "63667", ort: "Nidda", email: "j.hoffmann@example.com", telefon: "06043 5678", fensterbauerId: fensterbauer[1].id },
-    { id: crypto.randomUUID(), vorname: "Petra", nachname: "Schulz", firma: "Schulz Immobilien", strasse: "Ringstraße 9", plz: "63636", ort: "Brachttal", email: "p.schulz@example.com", telefon: "06054 4321", fensterbauerId: fensterbauer[2].id },
-    { id: crypto.randomUUID(), vorname: "Michael", nachname: "Vogt", firma: "", strasse: "Hauptstraße 51", plz: "63654", ort: "Büdingen", email: "m.vogt@example.com", telefon: "06042 9876", fensterbauerId: fensterbauer[0].id },
+    { id: crypto.randomUUID(), vorname: "Anna", nachname: "Becker", firma: "", strasse: "Marktstraße 4", plz: "63654", ort: "Büdingen", telefon: "06042 1234", email: "anna.becker@example.com", bemerkungen: "", fensterbauerId: fensterbauer[0].id },
+    { id: crypto.randomUUID(), vorname: "Jürgen", nachname: "Hoffmann", firma: "", strasse: "Am Bahnhof 12", plz: "63667", ort: "Nidda", telefon: "06043 5678", email: "j.hoffmann@example.com", bemerkungen: "Ist tagsüber schlecht erreichbar, lieber abends anrufen.", fensterbauerId: fensterbauer[1].id },
+    { id: crypto.randomUUID(), vorname: "Petra", nachname: "Schulz", firma: "Schulz Immobilien", strasse: "Ringstraße 9", plz: "63636", ort: "Brachttal", telefon: "06054 4321", email: "p.schulz@example.com", bemerkungen: "", fensterbauerId: fensterbauer[2].id },
+    { id: crypto.randomUUID(), vorname: "Michael", nachname: "Vogt", firma: "", strasse: "Hauptstraße 51", plz: "63654", ort: "Büdingen", telefon: "06042 9876", email: "m.vogt@example.com", bemerkungen: "", fensterbauerId: fensterbauer[0].id },
   ];
   for (const k of kunden) await schreibe(KUNDEN_DIR, k.id, k);
 
@@ -185,8 +185,10 @@ async function seedFallsLeer() {
 app.get("/api/fensterbauer", async (req, res) => {
   const q = String(req.query.q || "");
   const alle = await leseAlle(FENSTERBAUER_DIR);
-  const gefiltert = alle.filter((f) => enthaeltText([f.name, f.kuerzel, f.kontaktEmail], q));
-  gefiltert.sort((a, b) => a.name.localeCompare(b.name));
+  const gefiltert = alle.filter((f) =>
+    enthaeltText([f.firma, f.vorname, f.nachname, f.kuerzel, f.email, f.ort], q)
+  );
+  gefiltert.sort((a, b) => a.firma.localeCompare(b.firma));
   res.json(gefiltert);
 });
 
@@ -199,9 +201,13 @@ app.get("/api/fensterbauer/:id", async (req, res) => {
 });
 
 app.post("/api/fensterbauer", async (req, res) => {
-  const { name, kuerzel, kontaktEmail } = req.body;
-  if (!name || !kuerzel) return res.status(400).json({ fehler: "Name und Kürzel sind Pflichtfelder." });
-  const f = { id: crypto.randomUUID(), name, kuerzel, kontaktEmail: kontaktEmail || "", aktiv: true };
+  const { vorname, nachname, firma, strasse, plz, ort, telefon, email, bemerkungen, kuerzel } = req.body;
+  if (!firma || !kuerzel) return res.status(400).json({ fehler: "Firma und Kürzel sind Pflichtfelder." });
+  const f = {
+    id: crypto.randomUUID(), vorname: vorname || "", nachname: nachname || "", firma,
+    strasse: strasse || "", plz: plz || "", ort: ort || "", telefon: telefon || "", email: email || "",
+    bemerkungen: bemerkungen || "", kuerzel, aktiv: true,
+  };
   await schreibe(FENSTERBAUER_DIR, f.id, f);
   res.status(201).json(f);
 });
@@ -214,7 +220,7 @@ app.get("/api/kunden", async (req, res) => {
   const alle = await leseAlle(KUNDEN_DIR);
   const fensterbauerListe = await leseAlle(FENSTERBAUER_DIR);
   const fensterbauerNachId = Object.fromEntries(fensterbauerListe.map((f) => [f.id, f]));
-  const angereichert = alle.map((k) => ({ ...k, fensterbauerName: fensterbauerNachId[k.fensterbauerId]?.name || "" }));
+  const angereichert = alle.map((k) => ({ ...k, fensterbauerName: fensterbauerNachId[k.fensterbauerId]?.firma || "" }));
   const gefiltert = angereichert.filter((k) =>
     enthaeltText([k.vorname, k.nachname, k.firma, k.email, k.ort, k.fensterbauerName], q)
   );
@@ -230,14 +236,14 @@ app.get("/api/kunden/:id", async (req, res) => {
 });
 
 app.post("/api/kunden", async (req, res) => {
-  const { vorname, nachname, firma, strasse, plz, ort, email, telefon, fensterbauerId } = req.body;
+  const { vorname, nachname, firma, strasse, plz, ort, telefon, email, bemerkungen, fensterbauerId } = req.body;
   if (!nachname || !fensterbauerId) {
     return res.status(400).json({ fehler: "Nachname und Fensterbauer sind Pflichtfelder." });
   }
   const k = {
     id: crypto.randomUUID(), vorname: vorname || "", nachname, firma: firma || "",
-    strasse: strasse || "", plz: plz || "", ort: ort || "", email: email || "", telefon: telefon || "",
-    fensterbauerId,
+    strasse: strasse || "", plz: plz || "", ort: ort || "", telefon: telefon || "", email: email || "",
+    bemerkungen: bemerkungen || "", fensterbauerId,
   };
   await schreibe(KUNDEN_DIR, k.id, k);
   res.status(201).json(k);
@@ -264,7 +270,7 @@ app.get("/api/vorgaenge", async (req, res) => {
     return mitFlags({
       ...v,
       kundeName: kunde ? `${kunde.vorname} ${kunde.nachname}`.trim() : "",
-      fensterbauerName: fensterbauer ? fensterbauer.name : "",
+      fensterbauerName: fensterbauer ? fensterbauer.firma : "",
     });
   });
 

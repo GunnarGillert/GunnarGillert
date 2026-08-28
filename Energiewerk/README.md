@@ -75,11 +75,21 @@ Klammer – jedes Dokument, jede Mail und jede Rechnung hängt eindeutig an
 genau einem Vorgang, jeder Vorgang eindeutig an genau einem Kunden und
 einem Fensterbauer.
 
+Fensterbauer und Kunde tragen bewusst dieselben Kontaktfelder (Vorname,
+Name, Firma, Straße, PLZ, Ort, Telefon, E-Mail, Bemerkungen) – beim
+Fensterbauer sind Vorname/Name der Ansprechpartner, Firma der eigentliche
+Betrieb; dazu kommen Kürzel (Kurzreferenz, z. B. für Dateinamen) und
+Aktiv/Inaktiv.
+
 ```
-Fensterbauer               Kunde
-  - id, Name, Kürzel         - id, Vorname, Nachname, Firma
-  - Kontakt (E-Mail To/CC)   - Adresse, E-Mail, Telefon
-  - Aktiv/Inaktiv            - fensterbauerId (FK)
+Fensterbauer                    Kunde
+  - id, Kürzel, Aktiv/Inaktiv     - id, fensterbauerId (FK)
+  - Vorname, Name                - Vorname, Name, Firma
+    (Ansprechpartner)            - Straße, PLZ, Ort
+  - Firma                        - Telefon, E-Mail
+  - Straße, PLZ, Ort              - Bemerkungen
+  - Telefon, E-Mail (To/CC)
+  - Bemerkungen
         \                    /
          \                  /
               Vorgang (Förderfall)

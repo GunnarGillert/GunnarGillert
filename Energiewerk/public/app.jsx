@@ -226,7 +226,7 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen }) {
           <h3>Vorgang {ausgewaehlterVorgang.id}</h3>
           <div className="feld-zeile">
             <div className="feld"><div className="label">Kunde</div>{ausgewaehlterVorgang.kunde?.vorname} {ausgewaehlterVorgang.kunde?.nachname}</div>
-            <div className="feld"><div className="label">Fensterbauer</div>{ausgewaehlterVorgang.fensterbauer?.name}</div>
+            <div className="feld"><div className="label">Fensterbauer</div>{ausgewaehlterVorgang.fensterbauer?.firma}</div>
             <div className="feld"><div className="label">BAFA-Vorgangs-ID</div>{ausgewaehlterVorgang.bafaVorgangsId || "–"}</div>
             <div className="feld"><div className="label">Status</div>{STATUS_LABEL[ausgewaehlterVorgang.status]}</div>
           </div>
@@ -263,20 +263,45 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen }) {
 // ----------------------------------------------------------------------------
 // Kundenverwaltung
 // ----------------------------------------------------------------------------
+const LEERES_KONTAKT_FORMULAR = {
+  vorname: "", nachname: "", firma: "", strasse: "", plz: "", ort: "", telefon: "", email: "", bemerkungen: "",
+};
+
 function Kundenverwaltung() {
   const [suche, setSuche] = useState("");
   const [kunden, setKunden] = useState([]);
+  const [fensterbauerListe, setFensterbauerListe] = useState([]);
   const [ausgewaehlt, setAusgewaehlt] = useState(null);
+  const [neu, setNeu] = useState({ ...LEERES_KONTAKT_FORMULAR, fensterbauerId: "" });
 
-  useEffect(() => {
+  const laden = useCallback(() => {
     const params = new URLSearchParams();
     if (suche) params.set("q", suche);
     ladeJson(`/api/kunden?${params}`).then(setKunden).catch(() => {});
   }, [suche]);
 
+  useEffect(() => { laden(); }, [laden]);
+  useEffect(() => { ladeJson("/api/fensterbauer").then(setFensterbauerListe).catch(() => {}); }, []);
+
   async function oeffne(id) {
     const k = await ladeJson(`/api/kunden/${id}`);
     setAusgewaehlt(k);
+  }
+
+  async function anlegen(e) {
+    e.preventDefault();
+    if (!neu.nachname || !neu.fensterbauerId) return;
+    await ladeJson("/api/kunden", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(neu),
+    });
+    setNeu({ ...LEERES_KONTAKT_FORMULAR, fensterbauerId: "" });
+    laden();
+  }
+
+  function feldAendern(feld) {
+    return (e) => setNeu((vorher) => ({ ...vorher, [feld]: e.target.value }));
   }
 
   return (
@@ -289,32 +314,57 @@ function Kundenverwaltung() {
           onChange={(e) => setSuche(e.target.value)}
         />
       </div>
+
+      <form className="form-neu" onSubmit={anlegen}>
+        <input type="text" placeholder="Vorname" value={neu.vorname} onChange={feldAendern("vorname")} />
+        <input type="text" placeholder="Name" value={neu.nachname} onChange={feldAendern("nachname")} />
+        <input type="text" placeholder="Firma" value={neu.firma} onChange={feldAendern("firma")} />
+        <input type="text" placeholder="Straße" value={neu.strasse} onChange={feldAendern("strasse")} />
+        <input type="text" placeholder="PLZ" value={neu.plz} onChange={feldAendern("plz")} />
+        <input type="text" placeholder="Ort" value={neu.ort} onChange={feldAendern("ort")} />
+        <input type="text" placeholder="Telefonnummer" value={neu.telefon} onChange={feldAendern("telefon")} />
+        <input type="text" placeholder="E-Mail" value={neu.email} onChange={feldAendern("email")} />
+        <select value={neu.fensterbauerId} onChange={feldAendern("fensterbauerId")}>
+          <option value="">Fensterbauer wählen …</option>
+          {fensterbauerListe.map((f) => <option value={f.id} key={f.id}>{f.firma}</option>)}
+        </select>
+        <input type="text" placeholder="Bemerkungen" value={neu.bemerkungen} onChange={feldAendern("bemerkungen")} />
+        <button className="aktion" type="submit">Anlegen</button>
+      </form>
+
       <table>
         <thead>
-          <tr><th>Name</th><th>Ort</th><th>E-Mail</th><th>Fensterbauer</th></tr>
+          <tr><th>Name</th><th>Firma</th><th>Ort</th><th>Telefon</th><th>E-Mail</th><th>Fensterbauer</th></tr>
         </thead>
         <tbody>
           {kunden.map((k) => (
             <tr key={k.id} className="klickbar" onClick={() => oeffne(k.id)}>
-              <td>{k.vorname} {k.nachname}{k.firma ? ` (${k.firma})` : ""}</td>
+              <td>{k.vorname} {k.nachname}</td>
+              <td>{k.firma}</td>
               <td>{k.plz} {k.ort}</td>
+              <td>{k.telefon}</td>
               <td>{k.email}</td>
               <td>{k.fensterbauerName}</td>
             </tr>
           ))}
-          {kunden.length === 0 && <tr><td colSpan="4" className="leer">Keine Kunden gefunden.</td></tr>}
+          {kunden.length === 0 && <tr><td colSpan="6" className="leer">Keine Kunden gefunden.</td></tr>}
         </tbody>
       </table>
 
       {ausgewaehlt && (
         <div className="karte-panel">
           <button className="schliessen" onClick={() => setAusgewaehlt(null)}>Schließen ✕</button>
-          <h3>{ausgewaehlt.vorname} {ausgewaehlt.nachname}</h3>
+          <h3>{ausgewaehlt.vorname} {ausgewaehlt.nachname}{ausgewaehlt.firma ? ` (${ausgewaehlt.firma})` : ""}</h3>
           <div className="feld-zeile">
             <div className="feld"><div className="label">Adresse</div>{ausgewaehlt.strasse}, {ausgewaehlt.plz} {ausgewaehlt.ort}</div>
-            <div className="feld"><div className="label">E-Mail</div>{ausgewaehlt.email}</div>
             <div className="feld"><div className="label">Telefon</div>{ausgewaehlt.telefon}</div>
+            <div className="feld"><div className="label">E-Mail</div>{ausgewaehlt.email}</div>
           </div>
+          {ausgewaehlt.bemerkungen && (
+            <div className="feld-zeile">
+              <div className="feld"><div className="label">Bemerkungen</div>{ausgewaehlt.bemerkungen}</div>
+            </div>
+          )}
           <h3>Vorgänge dieses Kunden</h3>
           {ausgewaehlt.vorgaenge.length === 0 && <div className="leer">Noch keine Vorgänge.</div>}
           {ausgewaehlt.vorgaenge.map((v) => (
@@ -335,9 +385,7 @@ function Fensterbauerverwaltung() {
   const [suche, setSuche] = useState("");
   const [liste, setListe] = useState([]);
   const [ausgewaehlt, setAusgewaehlt] = useState(null);
-  const [neuName, setNeuName] = useState("");
-  const [neuKuerzel, setNeuKuerzel] = useState("");
-  const [neuEmail, setNeuEmail] = useState("");
+  const [neu, setNeu] = useState({ ...LEERES_KONTAKT_FORMULAR, kuerzel: "" });
 
   const laden = useCallback(() => {
     const params = new URLSearchParams();
@@ -354,14 +402,18 @@ function Fensterbauerverwaltung() {
 
   async function anlegen(e) {
     e.preventDefault();
-    if (!neuName || !neuKuerzel) return;
+    if (!neu.firma || !neu.kuerzel) return;
     await ladeJson("/api/fensterbauer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: neuName, kuerzel: neuKuerzel, kontaktEmail: neuEmail }),
+      body: JSON.stringify(neu),
     });
-    setNeuName(""); setNeuKuerzel(""); setNeuEmail("");
+    setNeu({ ...LEERES_KONTAKT_FORMULAR, kuerzel: "" });
     laden();
+  }
+
+  function feldAendern(feld) {
+    return (e) => setNeu((vorher) => ({ ...vorher, [feld]: e.target.value }));
   }
 
   return (
@@ -369,39 +421,58 @@ function Fensterbauerverwaltung() {
       <div className="suchleiste">
         <input
           type="text"
-          placeholder="Suche nach Name oder Kürzel …"
+          placeholder="Suche nach Firma, Ansprechpartner oder Kürzel …"
           value={suche}
           onChange={(e) => setSuche(e.target.value)}
         />
       </div>
 
       <form className="form-neu" onSubmit={anlegen}>
-        <input type="text" placeholder="Neuer Fensterbauer: Name" value={neuName} onChange={(e) => setNeuName(e.target.value)} />
-        <input type="text" placeholder="Kürzel" value={neuKuerzel} onChange={(e) => setNeuKuerzel(e.target.value)} />
-        <input type="text" placeholder="Kontakt-E-Mail" value={neuEmail} onChange={(e) => setNeuEmail(e.target.value)} />
+        <input type="text" placeholder="Firma" value={neu.firma} onChange={feldAendern("firma")} />
+        <input type="text" placeholder="Kürzel" value={neu.kuerzel} onChange={feldAendern("kuerzel")} />
+        <input type="text" placeholder="Vorname (Ansprechpartner)" value={neu.vorname} onChange={feldAendern("vorname")} />
+        <input type="text" placeholder="Name (Ansprechpartner)" value={neu.nachname} onChange={feldAendern("nachname")} />
+        <input type="text" placeholder="Straße" value={neu.strasse} onChange={feldAendern("strasse")} />
+        <input type="text" placeholder="PLZ" value={neu.plz} onChange={feldAendern("plz")} />
+        <input type="text" placeholder="Ort" value={neu.ort} onChange={feldAendern("ort")} />
+        <input type="text" placeholder="Telefonnummer" value={neu.telefon} onChange={feldAendern("telefon")} />
+        <input type="text" placeholder="E-Mail (To/CC)" value={neu.email} onChange={feldAendern("email")} />
+        <input type="text" placeholder="Bemerkungen" value={neu.bemerkungen} onChange={feldAendern("bemerkungen")} />
         <button className="aktion" type="submit">Anlegen</button>
       </form>
 
       <table>
-        <thead><tr><th>Name</th><th>Kürzel</th><th>Kontakt-E-Mail</th><th>Aktiv</th></tr></thead>
+        <thead><tr><th>Firma</th><th>Ansprechpartner</th><th>Ort</th><th>Telefon</th><th>E-Mail</th><th>Aktiv</th></tr></thead>
         <tbody>
           {liste.map((f) => (
             <tr key={f.id} className="klickbar" onClick={() => oeffne(f.id)}>
-              <td>{f.name}</td><td>{f.kuerzel}</td><td>{f.kontaktEmail}</td><td>{f.aktiv ? "Ja" : "Nein"}</td>
+              <td>{f.firma}</td>
+              <td>{f.vorname} {f.nachname}</td>
+              <td>{f.plz} {f.ort}</td>
+              <td>{f.telefon}</td>
+              <td>{f.email}</td>
+              <td>{f.aktiv ? "Ja" : "Nein"}</td>
             </tr>
           ))}
-          {liste.length === 0 && <tr><td colSpan="4" className="leer">Keine Fensterbauer gefunden.</td></tr>}
+          {liste.length === 0 && <tr><td colSpan="6" className="leer">Keine Fensterbauer gefunden.</td></tr>}
         </tbody>
       </table>
 
       {ausgewaehlt && (
         <div className="karte-panel">
           <button className="schliessen" onClick={() => setAusgewaehlt(null)}>Schließen ✕</button>
-          <h3>{ausgewaehlt.name}</h3>
+          <h3>{ausgewaehlt.firma} <span style={{ fontWeight: 400, fontSize: 13, color: "#5c6b66" }}>({ausgewaehlt.kuerzel})</span></h3>
           <div className="feld-zeile">
-            <div className="feld"><div className="label">Kürzel</div>{ausgewaehlt.kuerzel}</div>
-            <div className="feld"><div className="label">Kontakt-E-Mail (To/CC)</div>{ausgewaehlt.kontaktEmail}</div>
+            <div className="feld"><div className="label">Ansprechpartner</div>{ausgewaehlt.vorname} {ausgewaehlt.nachname}</div>
+            <div className="feld"><div className="label">Adresse</div>{ausgewaehlt.strasse}, {ausgewaehlt.plz} {ausgewaehlt.ort}</div>
+            <div className="feld"><div className="label">Telefon</div>{ausgewaehlt.telefon}</div>
+            <div className="feld"><div className="label">E-Mail (To/CC)</div>{ausgewaehlt.email}</div>
           </div>
+          {ausgewaehlt.bemerkungen && (
+            <div className="feld-zeile">
+              <div className="feld"><div className="label">Bemerkungen</div>{ausgewaehlt.bemerkungen}</div>
+            </div>
+          )}
           <h3>Zugeordnete Kunden ({ausgewaehlt.kunden.length})</h3>
           {ausgewaehlt.kunden.map((k) => (
             <div className="historie-eintrag" key={k.id}>{k.vorname} {k.nachname}</div>
