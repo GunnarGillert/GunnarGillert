@@ -7,10 +7,11 @@ Rechnungsstellung und (soweit zulässig automatisiert) Kommunikation.
 
 **Status:** Konzept-Skizze, dazu ein erster lauffähiger **Prototyp**
 (`server.js` + `public/`) mit Startseite, Auftrags-, Kunden- und
-Fensterbauerverwaltung inkl. Suche/Filter, gefüllt mit Beispieldaten, sowie
-einem Unterlagen-Upload direkt am Vorgang mit automatischer
-Dokumenttyp-Erkennung (Dateiname, bei Bedarf PDF-Textebene/OCR + KI-
-Vorschlag). Login, Mailversand, PDF/E-Rechnung und der eigenständige
+Fensterbauerverwaltung inkl. Suche/Filter, gefüllt mit Beispieldaten, einem
+Unterlagen-Upload direkt am Vorgang mit automatischer Dokumenttyp-Erkennung
+(Dateiname, bei Bedarf PDF-Textebene/OCR + KI-Vorschlag) sowie einem
+Einstellungen-Reiter mit Merkblatt-Ablage (KfW) für die automatische
+U-Wert-Prüfung. Login, Mailversand, PDF/E-Rechnung und der eigenständige
 Eingangs-Ordner-Watcher aus dieser Skizze sind im Prototyp noch **nicht**
 umgesetzt. Lokal starten:
 
@@ -169,8 +170,9 @@ verdoppeln):
 Wie bei Parkwerk eine Reiter-basierte Single-Page-Oberfläche (React, ein
 Reiter = eine Ansicht mit eigener Liste/Suche/Detailansicht). Aktuell
 angefragt/festgelegt: Startseite, Auftragsverwaltung, Kundenverwaltung,
-Fensterbauerverwaltung – dazu kommen (aus dem bisherigen Aufbau bereits
-absehbar) noch die Reiter Dokumente/Eingang, Vorlagen, Einstellungen,
+Fensterbauerverwaltung, dazu bereits im Prototyp ein **Einstellungen**-
+Reiter mit der Merkblatt-Ablage (s. u.) – dazu kommen (aus dem bisherigen
+Aufbau bereits absehbar) noch die Reiter Dokumente/Eingang, Vorlagen,
 Benutzer.
 
 ### Startseite (Übersicht)
@@ -358,17 +360,38 @@ Fehlermeldung endet statt unbegrenzt zu hängen.
 ### KI-Anbindung (zwei Verwendungen, ein Proxy)
 
 Wie bei Parkwerks „KI-Textvorschlag" läuft die Anthropic-API ausschließlich
-serverseitig über `/api/claude`; der Key steht nie im Client.
+serverseitig; der Key steht nie im Client (Einstellungen `anthropicApiKey`
+bzw. `ANTHROPIC_API_KEY` in der `.env`, dieselbe Auflösungsreihenfolge wie
+bei Parkwerk).
 
-1. **U-Wert-Prüfung**: Prompt aus Angebots-U-Werten + aktueller
-   BAFA-Merkblatt-Version (als Referenztext/Datei hinterlegt,
-   Vorlage editierbar wie Parkwerks KI-Textvorschlag-Prompt). Ergebnis
-   wird **immer** als Protokoll gespeichert (nicht nur angezeigt) –
-   das ist der Compliance-Nachweis.
-2. **Bescheid-Parsing**: Prompt/Extraktion aus dem gescannten
-   Zuwendungsbescheid (Name, Betrag, Vorgangs-ID) - dieselbe
-   Textauszug-Grundlage wie beim Unterlagen-Upload oben lässt sich hierfür
-   wiederverwenden, sobald der Bescheid als Dokument am Vorgang hängt.
+1. **U-Wert-Prüfung (im Prototyp umgesetzt)**: Reiter **Einstellungen** →
+   Merkblatt (KfW) hochladen (muss eine durchsuchbare PDF sein, wird beim
+   Upload einmalig per `pdf-parse` ausgelesen und der Textauszug in
+   `settings.json` zwischengespeichert - keine erneute PDF-Verarbeitung
+   bei jeder Prüfung). Sobald danach ein Dokument an einem Vorgang als
+   **„Angebot"** eingestuft wird - automatisch per Dateiname-Erkennung
+   *oder* nachträglich manuell/per KI-Vorschlag bestätigt (siehe
+   Unterlagen-Upload oben) - läuft automatisch derselbe Textauszug wie
+   beim Upload, plus ein Claude-Aufruf, der das Angebot gegen den
+   Merkblatt-Text prüft. Ergebnis (`konform` / `nicht_konform` /
+   `unsicher` / `nicht_moeglich` inkl. Begründung, gefundenen U-Werten und
+   ggf. Fehlergrund) wird **immer** am Vorgang gespeichert (`uWertPruefung`)
+   und in der Historie protokolliert - auch wenn die Prüfung mangels
+   API-Key/Merkblatt/lesbarem Text nicht möglich war. Das ist der
+   Compliance-Nachweis, kein reines UI-Feedback.
+2. **Bescheid-Parsing (noch nicht umgesetzt)**: Prompt/Extraktion aus dem
+   gescannten Zuwendungsbescheid (Name, Betrag, Vorgangs-ID) - dieselbe
+   Textauszug-Grundlage wie beim Unterlagen-Upload und der U-Wert-Prüfung
+   lässt sich dafür wiederverwenden, sobald der Bescheid als Dokument am
+   Vorgang hängt.
+
+**Bekannte Grenze:** Ohne hinterlegten API-Key (Standard in dieser
+Entwicklungsumgebung) liefert die Prüfung immer `nicht_moeglich` mit
+entsprechender Begründung - das End-to-End-Verhalten bei einem echten
+Claude-Aufruf (inkl. Prompt-Qualität bei echten Angeboten/Merkblättern)
+ist damit noch nicht gegen einen echten Key getestet, nur der komplette
+Ablauf drumherum (Merkblatt-Ablage, Trigger-Zeitpunkte, Speichern,
+Fehlerfälle).
 
 ### Rollen
 

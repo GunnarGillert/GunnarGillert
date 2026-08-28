@@ -17,6 +17,20 @@ const STATUS_LABEL = {
   storniert: "Storniert",
 };
 
+const UWERT_ERGEBNIS_LABEL = {
+  konform: "Konform",
+  nicht_konform: "Nicht konform",
+  unsicher: "Unsicher",
+  nicht_moeglich: "Nicht möglich",
+};
+
+const UWERT_ERGEBNIS_KLASSE = {
+  konform: "status",
+  nicht_konform: "ueberfaellig",
+  unsicher: "unbekannt",
+  nicht_moeglich: "unbekannt",
+};
+
 function formatEuro(betrag) {
   if (betrag == null) return "–";
   return betrag.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
@@ -268,6 +282,30 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen }) {
             <div className="feld"><div className="label">Rechnung</div>{ausgewaehlterVorgang.rechnung ? `${formatEuro(ausgewaehlterVorgang.rechnung.betrag)} (${ausgewaehlterVorgang.rechnung.zahlungsstatus})` : "–"}</div>
             <div className="feld"><div className="label">VN-Frist</div>{formatDatum(ausgewaehlterVorgang.verwendungsnachweisFrist)}</div>
           </div>
+
+          <h3>U-Wert-Prüfung</h3>
+          {ausgewaehlterVorgang.uWertPruefung ? (
+            <div className="feld-zeile">
+              <div className="feld">
+                <div className="label">Ergebnis</div>
+                <span className={`badge ${UWERT_ERGEBNIS_KLASSE[ausgewaehlterVorgang.uWertPruefung.ergebnis] || "unbekannt"}`}>
+                  {UWERT_ERGEBNIS_LABEL[ausgewaehlterVorgang.uWertPruefung.ergebnis] || ausgewaehlterVorgang.uWertPruefung.ergebnis}
+                </span>
+              </div>
+              <div className="feld"><div className="label">Geprüft am</div>{formatDatum(ausgewaehlterVorgang.uWertPruefung.geprueftAm)}</div>
+              {ausgewaehlterVorgang.uWertPruefung.begruendung && (
+                <div className="feld"><div className="label">Begründung</div>{ausgewaehlterVorgang.uWertPruefung.begruendung}</div>
+              )}
+              {ausgewaehlterVorgang.uWertPruefung.gefundeneUWerte?.length > 0 && (
+                <div className="feld"><div className="label">Gefundene U-Werte</div>{ausgewaehlterVorgang.uWertPruefung.gefundeneUWerte.join(", ")}</div>
+              )}
+              {ausgewaehlterVorgang.uWertPruefung.fehler && (
+                <div className="feld"><div className="label">Hinweis</div>{ausgewaehlterVorgang.uWertPruefung.fehler}</div>
+              )}
+            </div>
+          ) : (
+            <div className="leer">Noch keine Prüfung (läuft automatisch, sobald ein Dokument als „Angebot" hochgeladen bzw. zugeordnet wird).</div>
+          )}
 
           <div>
             <select onChange={(e) => e.target.value && aendereStatus(e.target.value)} value="">
@@ -562,6 +600,72 @@ function Fensterbauerverwaltung() {
 }
 
 // ----------------------------------------------------------------------------
+// Einstellungen
+// ----------------------------------------------------------------------------
+function Einstellungen() {
+  const [merkblatt, setMerkblatt] = useState(undefined);
+  const [hochladeLaeuft, setHochladeLaeuft] = useState(false);
+  const [hochladeFehler, setHochladeFehler] = useState("");
+
+  const laden = useCallback(() => {
+    ladeJson("/api/einstellungen/merkblatt").then(setMerkblatt).catch(() => setMerkblatt(null));
+  }, []);
+
+  useEffect(() => { laden(); }, [laden]);
+
+  async function dateiHochladen(e) {
+    const datei = e.target.files[0];
+    e.target.value = "";
+    if (!datei) return;
+    setHochladeFehler("");
+    setHochladeLaeuft(true);
+    try {
+      const formular = new FormData();
+      formular.append("datei", datei);
+      await ladeJson("/api/einstellungen/merkblatt", { method: "POST", body: formular });
+      laden();
+    } catch (fehler) {
+      setHochladeFehler(fehler.message);
+    } finally {
+      setHochladeLaeuft(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="karte-panel">
+        <h3>Merkblatt (KfW) für die U-Wert-Prüfung</h3>
+        <p style={{ color: "#5c6b66", fontSize: 13.5 }}>
+          Referenzdokument, gegen das hochgeladene Angebote automatisch auf die zulässigen
+          U-Werte geprüft werden (siehe Auftragsverwaltung → Unterlagen). Muss eine durchsuchbare
+          PDF sein (keine reine Scan-PDF ohne Textebene). Ein neuer Upload ersetzt das bisherige
+          Merkblatt.
+        </p>
+
+        {merkblatt === undefined && <div className="leer">Lädt …</div>}
+        {merkblatt === null && <div className="leer">Noch kein Merkblatt hinterlegt.</div>}
+        {merkblatt && (
+          <div className="feld-zeile">
+            <div className="feld">
+              <div className="label">Aktuell hinterlegt</div>
+              <a href="/api/einstellungen/merkblatt/datei" target="_blank" rel="noreferrer">{merkblatt.dateiname}</a>
+            </div>
+            <div className="feld"><div className="label">Hochgeladen am</div>{formatDatum(merkblatt.hochgeladenAm)}</div>
+            <div className="feld"><div className="label">Größe</div>{(merkblatt.groesse / 1024).toFixed(0)} KB</div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 10 }}>
+          <input type="file" accept="application/pdf" onChange={dateiHochladen} disabled={hochladeLaeuft} />
+          {hochladeLaeuft && <span> Wird hochgeladen und ausgelesen …</span>}
+        </div>
+        {hochladeFehler && <div className="leer">Fehler: {hochladeFehler}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
 // App-Gerüst mit Reitern
 // ----------------------------------------------------------------------------
 export default function App() {
@@ -585,6 +689,7 @@ export default function App() {
           ["auftraege", "Aufträge"],
           ["kunden", "Kunden"],
           ["fensterbauer", "Fensterbauer"],
+          ["einstellungen", "Einstellungen"],
         ].map(([id, label]) => (
           <button
             key={id}
@@ -605,6 +710,7 @@ export default function App() {
         )}
         {reiter === "kunden" && <Kundenverwaltung />}
         {reiter === "fensterbauer" && <Fensterbauerverwaltung />}
+        {reiter === "einstellungen" && <Einstellungen />}
       </main>
     </div>
   );

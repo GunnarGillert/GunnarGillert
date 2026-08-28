@@ -36,8 +36,10 @@ const DOKUMENTE_DIR = path.join(COLLECTIONS_DIR, "dokumente");
 const LOGS_DIR = path.join(DATA_DIR, "logs");
 const DEBUG_LOG_PATH = path.join(LOGS_DIR, "debug.log");
 const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
+const MERKBLATT_DIR = path.join(DATA_DIR, "merkblatt");
+const MERKBLATT_DATEI = path.join(MERKBLATT_DIR, "merkblatt.pdf");
 
-for (const dir of [DATA_DIR, COLLECTIONS_DIR, FENSTERBAUER_DIR, KUNDEN_DIR, VORGAENGE_DIR, DOKUMENTE_DIR, LOGS_DIR]) {
+for (const dir of [DATA_DIR, COLLECTIONS_DIR, FENSTERBAUER_DIR, KUNDEN_DIR, VORGAENGE_DIR, DOKUMENTE_DIR, LOGS_DIR, MERKBLATT_DIR]) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
@@ -287,6 +289,102 @@ async function holeKiVorschlag(text, dateiname) {
   } catch (fehler) {
     return { typ: null, begruendung: null, fehler: `KI-Anfrage fehlgeschlagen: ${fehler.message}` };
   }
+}
+
+// ----------------------------------------------------------------------------
+// U-Wert-Prüfung: Angebots-Text gegen das hinterlegte Merkblatt (KfW) prüfen.
+// Ergebnis wird IMMER am Vorgang gespeichert (auch wenn die Prüfung nicht
+// möglich war) - das ist der Compliance-Nachweis, kein reines UI-Feedback.
+// ----------------------------------------------------------------------------
+async function holeUWertPruefung(angebotText, merkblattText) {
+  const einstellungen = await leseEinstellungen();
+  const apiKey = einstellungen.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { ergebnis: "nicht_moeglich", begruendung: null, gefundeneUWerte: [], fehler: "Kein Claude-API-Key hinterlegt (Einstellungen bzw. ANTHROPIC_API_KEY)." };
+  if (!merkblattText) return { ergebnis: "nicht_moeglich", begruendung: null, gefundeneUWerte: [], fehler: "Kein Merkblatt in den Einstellungen hinterlegt." };
+  if (!angebotText) return { ergebnis: "nicht_moeglich", begruendung: null, gefundeneUWerte: [], fehler: "Kein Text aus dem Angebot extrahierbar." };
+
+  try {
+    const antwort = await fetchMitZeitlimit("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 500,
+        messages: [{
+          role: "user",
+          content: `Merkblatt (Referenz für zulässige U-Werte):\n"""\n${merkblattText}\n"""\n\n` +
+            `Angebot (zu prüfen):\n"""\n${angebotText}\n"""\n\n` +
+            `Prüfe, ob die im Angebot genannten U-Werte der Fenster die im Merkblatt genannten ` +
+            `Anforderungen einhalten. Antworte AUSSCHLIESSLICH mit einem JSON-Objekt der Form ` +
+            `{"ergebnis": "konform" | "nicht_konform" | "unsicher", "gefundeneUWerte": ["..."], ` +
+            `"begruendung": "ein bis zwei Sätze"} ohne weiteren Text. Nutze "unsicher", wenn sich im ` +
+            `Angebot keine eindeutigen U-Werte finden lassen.`,
+        }],
+      }),
+    }, 30000);
+
+    if (!antwort.ok) {
+      return { ergebnis: "nicht_moeglich", begruendung: null, gefundeneUWerte: [], fehler: `Claude-API antwortete mit HTTP ${antwort.status}.` };
+    }
+    const daten = await antwort.json();
+    const rohtext = daten.content?.[0]?.text || "";
+    const treffer = rohtext.match(/\{[\s\S]*\}/);
+    if (!treffer) return { ergebnis: "nicht_moeglich", begruendung: null, gefundeneUWerte: [], fehler: "Antwort der KI enthielt kein auswertbares JSON." };
+
+    const geparst = JSON.parse(treffer[0]);
+    if (!["konform", "nicht_konform", "unsicher"].includes(geparst.ergebnis)) {
+      return { ergebnis: "nicht_moeglich", begruendung: geparst.begruendung || null, gefundeneUWerte: [], fehler: "KI lieferte kein auswertbares Ergebnis." };
+    }
+    return {
+      ergebnis: geparst.ergebnis,
+      begruendung: geparst.begruendung || "",
+      gefundeneUWerte: Array.isArray(geparst.gefundeneUWerte) ? geparst.gefundeneUWerte : [],
+      fehler: null,
+    };
+  } catch (fehler) {
+    return { ergebnis: "nicht_moeglich", begruendung: null, gefundeneUWerte: [], fehler: `KI-Anfrage fehlgeschlagen: ${fehler.message}` };
+  }
+}
+
+// Liest den Angebots-Text aus der bereits gespeicherten Datei (nicht mehr
+// aus dem Upload-Buffer, damit dieselbe Funktion auch beim NACHTRÄGLICHEN
+// manuellen Zuordnen eines Dokuments zu "Angebot" greift) und führt die
+// U-Wert-Prüfung durch. Ergebnis + Historieneintrag werden direkt am
+// übergebenen Vorgangs-Objekt gesetzt; Aufrufer ist für das Speichern
+// (schreibe(...)) verantwortlich.
+async function fuehreUWertPruefungDurch(v, dokument) {
+  const heute = new Date().toISOString().slice(0, 10);
+  const einstellungen = await leseEinstellungen();
+  const merkblattText = einstellungen.merkblatt?.text || null;
+
+  let angebotText = "";
+  let extraktionsFehler = null;
+  try {
+    const buffer = await fsp.readFile(path.join(DOKUMENTE_DIR, v.id, dokument.gespeicherterDateiname));
+    const ergebnis = await extrahiereText(buffer, dokument.dateiname);
+    angebotText = ergebnis.text;
+    extraktionsFehler = ergebnis.fehler;
+  } catch (fehler) {
+    extraktionsFehler = `Angebot konnte nicht gelesen werden: ${fehler.message}`;
+  }
+
+  const pruefung = angebotText || merkblattText
+    ? await holeUWertPruefung(angebotText, merkblattText)
+    : { ergebnis: "nicht_moeglich", begruendung: null, gefundeneUWerte: [], fehler: extraktionsFehler || "Kein Merkblatt hinterlegt." };
+
+  v.uWertPruefung = {
+    ergebnis: pruefung.ergebnis,
+    begruendung: pruefung.begruendung,
+    gefundeneUWerte: pruefung.gefundeneUWerte,
+    fehler: pruefung.fehler || (!angebotText ? extraktionsFehler : null),
+    dokumentId: dokument.id,
+    geprueftAm: heute,
+  };
+
+  const zusammenfassung = pruefung.ergebnis === "nicht_moeglich"
+    ? `U-Wert-Prüfung für "${dokument.dateiname}" nicht möglich: ${v.uWertPruefung.fehler || "unbekannter Grund"}`
+    : `U-Wert-Prüfung für "${dokument.dateiname}" automatisch durchgeführt: Ergebnis "${pruefung.ergebnis}"`;
+  v.historie.push({ wer: "System", was: zusammenfassung, wann: heute });
 }
 
 // ----------------------------------------------------------------------------
@@ -564,6 +662,13 @@ app.post("/api/vorgaenge/:id/dokumente", upload.single("datei"), async (req, res
   }
   v.historie.push({ wer: "Sachbearbeiter", was: historieText, wann: heute });
 
+  // Automatischer U-Wert-Abgleich, sobald ein Dokument als "Angebot"
+  // eingeht - läuft NACH dem Upload-Historieneintrag, damit die
+  // Reihenfolge in der Historie nachvollziehbar bleibt.
+  if (dokument.typ === "Angebot") {
+    await fuehreUWertPruefungDurch(v, dokument);
+  }
+
   await schreibe(VORGAENGE_DIR, v.id, v);
   res.status(201).json(mitFlags(v));
 });
@@ -577,12 +682,21 @@ app.patch("/api/vorgaenge/:id/dokumente/:dokumentId", async (req, res) => {
   if (!DOKUMENTTYPEN.includes(typ)) return res.status(400).json({ fehler: "Unbekannter Dokumenttyp." });
 
   const heute = new Date().toISOString().slice(0, 10);
+  const warVorherAngebot = dokument.typ === "Angebot";
   dokument.typ = typ;
   v.historie.push({
     wer: "Sachbearbeiter",
     was: `Dokumenttyp von "${dokument.dateiname}" manuell auf "${typ}" gesetzt`,
     wann: heute,
   });
+
+  // Wurde ein Dokument nachträglich (z. B. nach KI-Vorschlag) als
+  // "Angebot" bestätigt, läuft der U-Wert-Abgleich jetzt nach - nicht
+  // erneut, falls es schon vorher "Angebot" war und nur umbenannt wurde.
+  if (typ === "Angebot" && !warVorherAngebot) {
+    await fuehreUWertPruefungDurch(v, dokument);
+  }
+
   await schreibe(VORGAENGE_DIR, v.id, v);
   res.json(mitFlags(v));
 });
@@ -596,6 +710,49 @@ app.get("/api/vorgaenge/:id/dokumente/:dokumentId/datei", async (req, res) => {
 });
 
 app.get("/api/dokumenttypen", (req, res) => res.json(DOKUMENTTYPEN));
+
+// ----------------------------------------------------------------------------
+// API: Einstellungen - Merkblatt (KfW) für die U-Wert-Prüfung
+// ----------------------------------------------------------------------------
+app.get("/api/einstellungen/merkblatt", async (req, res) => {
+  const einstellungen = await leseEinstellungen();
+  if (!einstellungen.merkblatt) return res.json(null);
+  const { dateiname, hochgeladenAm, groesse } = einstellungen.merkblatt;
+  res.json({ dateiname, hochgeladenAm, groesse });
+});
+
+app.post("/api/einstellungen/merkblatt", upload.single("datei"), async (req, res) => {
+  if (!req.file) return res.status(400).json({ fehler: "Keine Datei empfangen." });
+  if (!req.file.originalname.toLowerCase().endsWith(".pdf")) {
+    return res.status(400).json({ fehler: "Das Merkblatt muss ein PDF sein." });
+  }
+
+  const { text, fehler: extraktionsFehler } = await extrahiereText(req.file.buffer, req.file.originalname);
+  if (!text) {
+    return res.status(400).json({
+      fehler: `PDF konnte nicht gelesen werden - vermutlich ein reiner Scan ohne Textebene (${extraktionsFehler || "kein Text gefunden"}). ` +
+        `Bitte eine durchsuchbare PDF-Version des Merkblatts hochladen.`,
+    });
+  }
+
+  await fsp.writeFile(MERKBLATT_DATEI, req.file.buffer);
+  const einstellungen = await leseEinstellungen();
+  einstellungen.merkblatt = {
+    dateiname: req.file.originalname,
+    hochgeladenAm: new Date().toISOString().slice(0, 10),
+    groesse: req.file.size,
+    text,
+  };
+  await schreibeEinstellungen(einstellungen);
+  debugLog("einstellungen", `Merkblatt aktualisiert: "${req.file.originalname}" (${req.file.size} Bytes)`);
+  res.status(201).json({ dateiname: einstellungen.merkblatt.dateiname, hochgeladenAm: einstellungen.merkblatt.hochgeladenAm, groesse: einstellungen.merkblatt.groesse });
+});
+
+app.get("/api/einstellungen/merkblatt/datei", async (req, res) => {
+  const einstellungen = await leseEinstellungen();
+  if (!einstellungen.merkblatt) return res.status(404).json({ fehler: "Kein Merkblatt hinterlegt." });
+  res.download(MERKBLATT_DATEI, einstellungen.merkblatt.dateiname);
+});
 
 // ----------------------------------------------------------------------------
 // API: Startseite / Dashboard
