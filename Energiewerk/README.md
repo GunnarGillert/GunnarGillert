@@ -94,6 +94,66 @@ Fensterbauer               Kunde
 `umsetzung` → `verwendungsnachweis_eingereicht` → `festgesetzt` →
 `ausgezahlt` (plus `abgebrochen`/`nachfrage_offen` als Ausnahmepfade).
 
+## Oberfläche (Reiter)
+
+Wie bei Parkwerk eine Reiter-basierte Single-Page-Oberfläche (React, ein
+Reiter = eine Ansicht mit eigener Liste/Suche/Detailansicht). Aktuell
+angefragt/festgelegt: Startseite, Auftragsverwaltung, Kundenverwaltung,
+Fensterbauerverwaltung – dazu kommen (aus dem bisherigen Aufbau bereits
+absehbar) noch die Reiter Dokumente/Eingang, Vorlagen, Einstellungen,
+Benutzer.
+
+### Startseite (Übersicht)
+
+Dashboard mit Kennzahlen-Kacheln, analog zu Parkwerks Kachel „Überfällige
+Zahlungen" (aus Frist + aktuellem Datum abgeleitet, kein eigener
+gespeicherter Status):
+
+- Vorgänge je Status (offen / wartet auf Bescheid / Umsetzung /
+  Verwendungsnachweis fällig / abgeschlossen)
+- **Verwendungsnachweis überfällig** – eigene, rot hervorgehobene Kachel,
+  da das der bekannte manuelle Engpass ist
+- Ausstehende Freigaben (Mails/Rechnungen, die auf den Freigeber warten)
+- Letzte Aktivitäten (jüngste Statuswechsel/Versände aus `audit.log`)
+
+Klick auf eine Kachel springt direkt in die Auftragsverwaltung, dort
+bereits mit passendem Status-Filter vorbelegt.
+
+### Auftragsverwaltung (Vorgänge) mit Suche
+
+Tabellenansicht aller Vorgänge (entspricht Parkwerks Fälle-Reiter):
+
+- Freitextsuche oberhalb der Liste nach Vorgangsnummer, BAFA-Vorgangs-ID,
+  Kundenname oder Fensterbauer – kombinierbar mit Status-Filter (wie bei
+  Parkwerks Fälle-Suche, die sich mit dem Status-Filter kombinieren lässt)
+- Spalten: Vorgangsnummer, Kunde, Fensterbauer, Status, Bescheid-Betrag,
+  Verwendungsnachweis-Frist, „Überfällig"-Kennzeichen
+- Klick auf eine Zeile öffnet die Detailansicht: Historie, zugeordnete
+  Dokumente, Rechnung, Versandprotokoll, U-Wert-Prüfprotokoll –
+  strukturell wie Parkwerks Fall-Detailansicht
+
+### Kundenverwaltung mit Suche
+
+- Liste aller Kunden, Suche nach Name, Adresse, E-Mail oder zugeordnetem
+  Fensterbauer
+- Anlegen/Bearbeiten der Stammdaten; Detailansicht zeigt alle Vorgänge
+  dieses Kunden (Verknüpfung wie im Datenmodell oben)
+
+### Fensterbauerverwaltung mit Suche
+
+- Liste der Fensterbauer (aktuell drei, aber nicht hart codiert – neue
+  Fensterbauer müssen ohne Codeänderung anlegbar sein), Suche nach Name
+  oder Kürzel
+- Aktiv/Inaktiv-Schalter sowie Kontakt-E-Mail(s) für die automatische
+  To/CC-Logik beim Versand
+- Detailansicht zeigt alle zugeordneten Kunden und Vorgänge dieses
+  Fensterbauers
+
+Alle vier Suchen laufen wie bei Parkwerk als einfacher In-Memory-Filter
+über die bereits geladene JSON-Collection (kein Suchindex/keine
+Datenbank nötig bei den zu erwartenden Datenmengen von wenigen hundert
+bis tausend Vorgängen/Kunden).
+
 ## Technischer Aufbau (wie Parkwerk)
 
 | Baustein | Wie bei Parkwerk umgesetzt | Für Energiewerk übernommen |
