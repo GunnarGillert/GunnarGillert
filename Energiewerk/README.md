@@ -84,7 +84,10 @@ Fensterbauer               Kunde
               - historie[] (wer/was/wann - wie Parkwerks Fall-Historie)
                     |
                     ├── Dokument[]   (typisiert, siehe Ablage unten)
-                    ├── Rechnung[]   (E-Rechnungsformat)
+                    ├── Rechnung[]   { betrag, faelligkeitsdatum,
+                    │                  zahlungsstatus (offen/teilweise/
+                    │                  bezahlt), zahlungseingaenge[],
+                    │                  E-Rechnungsformat }
                     └── Versandprotokoll[] (wer/was/wann/Freigabe durch wen)
 ```
 
@@ -124,8 +127,16 @@ verdoppeln):
 - `rueckfrageOffen` (bool + Freitext + Datum) – BAFA fordert Nachbesserung
   an; kann in mehreren Hauptstatus auftreten, ist aber kein eigener
   Prozessschritt.
-- `ueberfaellig` – abgeleitet aus Frist + heutigem Datum (wie bei
-  Parkwerk), kein gespeicherter Wert.
+- `verwendungsnachweisUeberfaellig` – abgeleitet aus
+  `verwendungsnachweisFrist` + heutigem Datum, nur solange Status noch
+  nicht `verwendungsnachweis_eingereicht`/`festgesetzt`/`abgeschlossen`
+  ist (wie bei Parkwerk), kein gespeicherter Wert.
+- **`zahlungUeberfaellig`** – abgeleitet aus `rechnung.faelligkeitsdatum`
+  + heutigem Datum, solange `rechnung.zahlungsstatus` noch nicht
+  `bezahlt` ist **und** der Vorgang nicht `storniert`/`abgelehnt` ist –
+  exakt dieselbe Ableitungslogik wie Parkwerks Filter/Dashboard-Kachel
+  „Zahlung überfällig" (dort: Zahlungsfrist verstrichen, Fall weder
+  erledigt noch eskaliert noch abgebrochen).
 - `freigabeAusstehend` – ob eine automatisch erzeugte Mail/Rechnung noch
   auf den Freigeber wartet.
 
@@ -148,6 +159,9 @@ gespeicherter Status):
   Verwendungsnachweis fällig / abgeschlossen)
 - **Verwendungsnachweis überfällig** – eigene, rot hervorgehobene Kachel,
   da das der bekannte manuelle Engpass ist
+- **Zahlung überfällig** – eigene, rot hervorgehobene Kachel (Rechnung an
+  den Kunden versendet, Fälligkeitsdatum verstrichen, noch nicht als
+  bezahlt erfasst) – Live-Zähler wie bei Parkwerks gleichnamiger Kachel
 - Ausstehende Freigaben (Mails/Rechnungen, die auf den Freigeber warten)
 - Letzte Aktivitäten (jüngste Statuswechsel/Versände aus `audit.log`)
 
@@ -159,10 +173,15 @@ bereits mit passendem Status-Filter vorbelegt.
 Tabellenansicht aller Vorgänge (entspricht Parkwerks Fälle-Reiter):
 
 - Freitextsuche oberhalb der Liste nach Vorgangsnummer, BAFA-Vorgangs-ID,
-  Kundenname oder Fensterbauer – kombinierbar mit Status-Filter (wie bei
-  Parkwerks Fälle-Suche, die sich mit dem Status-Filter kombinieren lässt)
+  Kundenname oder Fensterbauer – kombinierbar mit Status-Filter sowie den
+  Zusatzfiltern „Verwendungsnachweis überfällig" und **„Zahlung
+  überfällig"** (mit Live-Zähler, exakt wie Parkwerks gleichnamiger
+  Filter im Fälle-Reiter)
 - Spalten: Vorgangsnummer, Kunde, Fensterbauer, Status, Bescheid-Betrag,
-  Verwendungsnachweis-Frist, „Überfällig"-Kennzeichen
+  Rechnungsbetrag + Fälligkeitsdatum, Verwendungsnachweis-Frist, sowie
+  getrennte „Überfällig"-Kennzeichen für Verwendungsnachweis und Zahlung
+  (ein Vorgang kann beides gleichzeitig sein, z. B. Umsetzung verzögert
+  sich **und** Kunde zahlt die Rechnung nicht fristgerecht)
 - Klick auf eine Zeile öffnet die Detailansicht: Historie, zugeordnete
   Dokumente, Rechnung, Versandprotokoll, U-Wert-Prüfprotokoll –
   strukturell wie Parkwerks Fall-Detailansicht
@@ -326,6 +345,27 @@ eingebettet, oder XRechnung als separates XML – Format hängt davon ab, ob
 Rechnungsempfänger B2B-Kunde oder öffentliche Stelle ist, siehe offene
 Frage unten). Betrag primär aus dem geparsten Bescheid, sonst aus
 Vorkalkulation im Vorgang.
+
+### Zahlungsabgleich (für „Zahlung überfällig")
+
+Damit `zahlungUeberfaellig` überhaupt etwas anderes anzeigt als „ewig
+überfällig", muss ein bezahlter Betrag irgendwie als „bezahlt" im
+Vorgang landen. Zwei Optionen, wie bei Parkwerks Stufe 6:
+
+- **Minimal (Startpunkt)**: Sachbearbeiter markiert die Rechnung nach
+  Zahlungseingang manuell als „bezahlt" (Button in der Vorgangs-
+  Detailansicht, wie Parkwerks „Als versendet markieren"-Muster).
+  Kein zusätzlicher Code nötig, aber laufender manueller Aufwand.
+- **Automatisch (Ausbaustufe, optional)**: Datei-Import (MT940/camt.053
+  aus dem Online-Banking) oder FinTS-Abruf wie bei Parkwerk, Abgleich
+  über die Vorgangsnummer (`EW-JJJJ-NNNNN`) im Verwendungszweck – exakt
+  dasselbe Verfahren, das bei Parkwerk für Aktenzeichen bereits gebaut
+  und getestet ist (`fints`-Bibliothek bzw. Datei-Import, Zuordnung über
+  ein Regex auf den Verwendungszweck).
+
+Empfehlung: mit der manuellen Variante starten (geringer Aufwand, deckt
+die Kachel/den Filter bereits vollständig ab) und den automatischen
+Abgleich erst nachziehen, falls das Rechnungsvolumen das rechtfertigt.
 
 ## Automatisierungsgrad je Schritt
 
