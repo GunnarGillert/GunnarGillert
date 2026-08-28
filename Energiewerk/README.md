@@ -88,11 +88,46 @@ Fensterbauer               Kunde
                     └── Versandprotokoll[] (wer/was/wann/Freigabe durch wen)
 ```
 
-**Vorgangsstatus (Enum)**: `eingang` → `stammdaten_angelegt` →
-`projektbeschreibung_erstellt` → `antrag_gestellt` → `u_wert_geprueft` →
-`vergabe_mitgeteilt` → `bescheid_erhalten` → `rechnung_versendet` →
-`umsetzung` → `verwendungsnachweis_eingereicht` → `festgesetzt` →
-`ausgezahlt` (plus `abgebrochen`/`nachfrage_offen` als Ausnahmepfade).
+**Vorgangsstatus (Hauptlinie, genau einer aktiv):**
+
+| # | Status | Bedeutung |
+|---|---|---|
+| 1 | `eingang` | Auftrag inkl. Vollmacht eingegangen |
+| 2 | `stammdaten_erfasst` | Kunde angelegt, Fensterbauer zugeordnet |
+| 3 | `u_wert_geprueft` | Angebot gegen Merkblatt geprüft, Ergebnis konform |
+| 4 | `antrag_gestellt` | Techn. Projektbeschreibung erstellt, BAFA-ID vorhanden, Antrag eingereicht |
+| 5 | `vergabe_freigegeben` | Kunde + Fensterbauer informiert, Beauftragung/Kauf kann erfolgen |
+| 6 | `bescheid_erhalten` | Zuwendungsbescheid identifiziert und weitergeleitet |
+| 7 | `rechnung_versendet` | Rechnung erstellt und an Kunden versendet |
+| 8 | `in_umsetzung` | Einbau läuft, Kunde liefert Rechnungen/Zahlungsnachweise |
+| 9 | `verwendungsnachweis_faellig` | Umsetzung abgeschlossen, Nachweis muss erstellt/eingereicht werden |
+| 10 | `verwendungsnachweis_eingereicht` | händisch im Portal eingereicht |
+| 11 | `festgesetzt` | Festsetzungsbescheid erhalten, an Kunden versendet |
+| 12 | `abgeschlossen` | Auszahlung bestätigt |
+
+Status 3 (U-Wert-Prüfung) ist bewusst **vor** Status 4 (Antrag) einsortiert,
+da die technische Projektbeschreibung die geprüften U-Werte enthalten
+sollte – abweichend von der ursprünglichen Aufzählungsreihenfolge in der
+Prozessbeschreibung. Falls die Projektbeschreibung in der Praxis mit
+vorläufigen Werten gestellt und erst später final geprüft wird, muss diese
+Reihenfolge angepasst werden.
+
+**Ausnahmezustände** (verlassen die Hauptlinie, statt sie pro Schritt zu
+verdoppeln):
+
+- `abgelehnt` – BAFA lehnt Antrag **oder** Verwendungsnachweis ab.
+- `storniert` – Kunde/Fensterbauer bricht ab (meist vor der Umsetzung).
+
+**Flags statt eigener Status** (verhindert eine Kombinationsexplosion wie
+„antrag_gestellt_mit_rueckfrage"):
+
+- `rueckfrageOffen` (bool + Freitext + Datum) – BAFA fordert Nachbesserung
+  an; kann in mehreren Hauptstatus auftreten, ist aber kein eigener
+  Prozessschritt.
+- `ueberfaellig` – abgeleitet aus Frist + heutigem Datum (wie bei
+  Parkwerk), kein gespeicherter Wert.
+- `freigabeAusstehend` – ob eine automatisch erzeugte Mail/Rechnung noch
+  auf den Freigeber wartet.
 
 ## Oberfläche (Reiter)
 
