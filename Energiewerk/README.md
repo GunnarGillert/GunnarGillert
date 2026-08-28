@@ -104,7 +104,7 @@ Fensterbauer               Kunde
 | Login | `users.json`, nur bcrypt-Hashes, `express-session` | gleich |
 | Rollen | Administrator / Bearbeiter, serverseitig durchgesetzt (nicht nur UI) | Administrator / Sachbearbeiter / **Freigeber** (neu, s. u.) |
 | PDF-Erzeugung | `pdf-lib`, Vorlagen mit `{{platzhalter}}`, gemeinsamer Briefkopf/Fußzeile-Code | gleich (Antrag-Begleitschreiben, Bescheid-Weiterleitung, Rechnung) |
-| E-Mail-Versand | `nodemailer` gegen das bestehende Postfach (SMTP, bei Parkwerk Strato) | gleich für den Versand; **zusätzlich IMAP-APPEND** in den „Gesendet"-Ordner des Postfachs, damit versendete Mails im normalen Mail-Client sichtbar sind (siehe offene Frage unten) |
+| E-Mail-Versand | `nodemailer` gegen das bestehende Postfach (SMTP, bei Parkwerk Strato) | gleich für den Versand; **zusätzlich IMAP-APPEND** in den „Gesendet"-Ordner des Postfachs, damit versendete Mails im normalen Mail-Client sichtbar sind (entschieden, s. u.) |
 | KI-Anbindung | serverseitiger Proxy `/api/claude`, Key nur serverseitig (`settings.json`/`.env`), nie im Client | gleich, zwei Verwendungen: U-Wert-Prüfung, Bescheid-Parsing |
 | Dokument-Import | Arivo-ZIP per (S)FTP/API, idempotent über eindeutige ID, Feld-Mapping mit Fallback-Namen | Scan-/Upload-Ordner in `DATA_DIR`, idempotent über Dateiname (Dokumenttyp + Vorgangs-ID), s. u. |
 | Backup | tägliches Cloud-Backup zu fester Uhrzeit (R2) | gleich |
@@ -200,6 +200,28 @@ serverseitig über `/api/claude`; der Key steht nie im Client.
   Kann mit Sachbearbeiter kombiniert sein oder eigenständig vergeben
   werden (z. B. wenn nur die Geschäftsleitung freigeben soll).
 
+### Mailversand: SMTP + IMAP-APPEND ins Gesendet-Postfach
+
+Entschieden: Versand läuft wie bei Parkwerk klassisch per **SMTP**
+(`nodemailer`, Zugangsdaten in `settings.json`/`.env`). Zusätzlich wird
+jede versendete Mail per **IMAP-APPEND** in den „Gesendet"-Ordner des
+tatsächlich genutzten Postfachs geschrieben, damit Kunde/Fensterbauer-
+Korrespondenz für alle Mitarbeitenden im normalen Mail-Client (Outlook
+o. ä.) sichtbar bleibt – nicht nur im Energiewerk-eigenen
+Versandprotokoll. Technisch z. B. über `node-imap`/`imap-simple` (`APPEND`
+auf `INBOX.Sent`/`Gesendete Objekte`, Ordnername je nach Provider
+unterschiedlich, ggf. per `LIST`-Befehl ermitteln statt hart zu
+kodieren). IMAP-Zugangsdaten wie das SMTP-Passwort bewusst nur in der
+lokalen `.env`, nie im Client oder in `settings.json` im Klartext.
+
+Fehlerbild, das zu berücksichtigen ist: Schlägt der IMAP-APPEND fehl
+(Postfach kurzzeitig nicht erreichbar), darf das den bereits erfolgten
+SMTP-Versand nicht rückgängig machen oder blockieren – Mail gilt als
+versendet, der fehlgeschlagene APPEND wird nur geloggt (`debug.log`) und
+lässt sich bei Bedarf später nachholen, analog zu Parkwerks Umgang mit
+einem einzelnen fehlgeschlagenen OCR-Versuch (Fehler wird protokolliert,
+legt aber nicht die eigentliche Aktion lahm).
+
 ### E-Rechnung
 
 PDF-Erzeugung wie bei Parkwerk über `pdf-lib` mit gemeinsamer
@@ -253,19 +275,15 @@ Vorkalkulation im Vorgang.
 3. Konkrete Anforderung ans E-Rechnungsformat (XRechnung vs. ZUGFeRD,
    Pflichtfelder) – abhängig davon, ob Rechnungsempfänger die Kunden
    (B2C) oder ggf. auch öffentliche Stellen sind.
-4. **"IMAP-basierter Mailversand"**: Ist damit gemeint, dass Versand
-   klassisch per SMTP läuft (wie bei Parkwerk/Strato) und die Mail
-   zusätzlich per IMAP-APPEND im „Gesendet"-Ordner des normalen
-   Postfachs sichtbar sein soll? Oder soll Energiewerk zusätzlich auch
-   das Postfach per IMAP **auslesen** (z. B. weil Bescheide teils per
-   Mail statt nur gescannt eingehen)? Das ändert den Zuschnitt des
-   Kommunikationsmoduls.
-5. SharePoint-Standort/Bibliothek, in der `Energiewerk-Daten` angelegt
+4. SharePoint-Standort/Bibliothek, in der `Energiewerk-Daten` angelegt
    werden soll (und ob sie – wie bei Parkwerk – lokal per OneDrive-Client
    synchronisiert vorliegt, damit `DATA_DIR` direkt darauf zeigen kann).
-6. Sollen mehrere Fensterbauer/Mitarbeitende gleichzeitig zugreifen
+5. Sollen mehrere Fensterbauer/Mitarbeitende gleichzeitig zugreifen
    können (→ zentraler Server-Betrieb wie bei Parkwerks „Server statt
    lokal"-Modus, empfohlen) oder reicht ein Einzelplatz-Betrieb?
+6. Genaue IMAP-Zugangsdaten/Postfach für den APPEND-Schritt (i. d. R.
+   dasselbe Postfach wie für SMTP) sowie der exakte Name des
+   „Gesendet"-Ordners beim genutzten Provider.
 
 ## Nächste Schritte (Vorschlag, nach Freigabe der Skizze)
 
