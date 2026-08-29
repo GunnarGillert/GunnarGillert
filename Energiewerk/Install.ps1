@@ -384,7 +384,14 @@ if ($httpsEinrichten -eq "j" -or $httpsEinrichten -eq "J") {
         $pfxPasswort = [Convert]::ToBase64String($pfxPasswortBytes) -replace '[+/=]', ''
         $securePasswort = ConvertTo-SecureString -String $pfxPasswort -Force -AsPlainText
         $pfxPfad = Join-Path $ZielOrdner "energiewerk-server.pfx"
-        Export-PfxCertificate -Cert $zertifikat -FilePath $pfxPfad -Password $securePasswort | Out-Null
+        # -CryptoAlgorithmOption AES256_SHA256 ist WICHTIG: Ohne diese Angabe
+        # verschlüsselt Export-PfxCertificate standardmäßig mit einem älteren
+        # Verfahren (TripleDES/SHA1), das Node.js ab Version 18 (nutzt
+        # OpenSSL 3.x) beim Laden mit "Error: mac verify failure" ablehnt -
+        # unabhängig davon, ob das Passwort stimmt. Genau das ist beim ersten
+        # echten Windows-Test aufgetreten. AES256_SHA256 wird von Node/OpenSSL
+        # 3.x direkt gelesen, ganz ohne Zusatzkonfiguration.
+        Export-PfxCertificate -Cert $zertifikat -FilePath $pfxPfad -Password $securePasswort -CryptoAlgorithmOption AES256_SHA256 | Out-Null
 
         # Aus dem Zertifikatsspeicher wieder entfernen - die PFX-Datei reicht,
         # ein zusaetzlicher Eintrag im Speicher wuerde nur unnoetig verwalten.
