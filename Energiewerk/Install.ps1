@@ -296,7 +296,29 @@ if (Test-Path $vorhandeneEnv) {
     $pfxZeile = (Get-Content $vorhandeneEnv | Where-Object { $_ -match '^\s*HTTPS_PFX_PATH\s*=\s*\S' } | Select-Object -First 1)
     if ($pfxZeile) {
         $pfxPfadBestehend = ($pfxZeile -split '=', 2)[1].Trim()
-        if (Test-Path $pfxPfadBestehend) { $bestehendesPfx = $pfxPfadBestehend }
+        $passphraseZeile = (Get-Content $vorhandeneEnv | Where-Object { $_ -match '^\s*HTTPS_PFX_PASSPHRASE\s*=\s*\S' } | Select-Object -First 1)
+        $passphraseBestehend = if ($passphraseZeile) { ($passphraseZeile -split '=', 2)[1].Trim() } else { "" }
+
+        # Nicht blind vertrauen, dass eine vorhandene Datei auch tatsaechlich
+        # brauchbar ist - genau das fuehrte beim ersten echten Windows-Test zu
+        # einer Endlosschleife: ein mit dem Legacy-Algorithmus erzeugtes PFX
+        # (siehe Kommentar bei Export-PfxCertificate unten) wurde nach dem Fix
+        # trotzdem unveraendert "wiederverwendet", weil die Datei ja noch da
+        # war - das eigentliche Problem (Node kann sie nicht laden) bestand
+        # dadurch nach jedem Update unveraendert weiter. Deshalb hier aktiv
+        # versuchen, das Zertifikat mit dem hinterlegten Passwort zu oeffnen;
+        # schlaegt das fehl, wird unten ein neues erzeugt statt die kaputte
+        # Datei endlos zu behalten.
+        if (Test-Path $pfxPfadBestehend) {
+            try {
+                $testZertifikat = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($pfxPfadBestehend, $passphraseBestehend)
+                $testZertifikat.Dispose()
+                $bestehendesPfx = $pfxPfadBestehend
+            } catch {
+                Write-Host "Vorhandenes Zertifikat '$pfxPfadBestehend' laesst sich nicht oeffnen" -ForegroundColor Yellow
+                Write-Host "($($_.Exception.Message)) - wird durch ein neues ersetzt." -ForegroundColor Yellow
+            }
+        }
     }
 }
 
