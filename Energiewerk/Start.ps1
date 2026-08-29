@@ -2,17 +2,6 @@ $ErrorActionPreference = "Stop"
 $InstallDir = $PSScriptRoot
 Set-Location $InstallDir
 
-# npm ist unter Windows ein .cmd-Batch-Wrapper (ruft intern cmd.exe auf) -
-# wird dessen Ausgabe wie unten per Tee-Object/Pipe erfasst, kann die
-# Konsolen-Codepage von der tatsaechlichen Textkodierung abweichen. Das
-# aeussert sich als "verstreute" Ausgabe mit einem Leerzeichen nach jedem
-# Buchstaben (z. B. "n o d e   s e r v e r . j s") - beim ersten echten
-# Windows-Test genau so aufgetreten. Behoben, indem die Konsole VOR jedem
-# npm-Aufruf auf UTF-8 gezwungen wird.
-chcp 65001 | Out-Null
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.Encoding]::UTF8
-
 Add-Type -AssemblyName System.Windows.Forms | Out-Null
 
 $LogDir = Join-Path $env:LOCALAPPDATA "Energiewerk"
@@ -22,6 +11,42 @@ $LogFile = Join-Path $LogDir "Start.log"
 function Log($text) {
     $zeitstempel = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Add-Content -Path $LogFile -Value "$zeitstempel  $text"
+}
+
+# ---------------------------------------------------------------------------
+# Ein Befehl ausführen und seine Ausgabe zuverlässig mitprotokollieren.
+#
+# Bewusst NICHT "befehl 2>&1 | Tee-Object ..." (wie in einer früheren
+# Version) - das erzeugte beim ersten echten Windows-Test eine "verstreute"
+# Ausgabe mit einem Leerzeichen nach jedem Buchstaben (z. B.
+# "n o d e   s e r v e r . j s"), reproduzierbar auch nach einem Versuch,
+# nur die Konsolen-Codepage umzustellen. Ursache: PowerShells eigene
+# Pipeline-/Anzeigeformatierung für die Ausgabe von .cmd-Batch-Wrappern wie
+# npm.cmd (läuft intern über cmd.exe) - kein reines Kodierungsproblem.
+#
+# Start-Process mit Datei-Umleitung umgeht das strukturell: Windows schreibt
+# die Ausgabe des Kindprozesses direkt in eine Datei, ganz ohne PowerShells
+# Pipeline/Objektformatierung dazwischen.
+# ---------------------------------------------------------------------------
+function FuehreAusUndProtokolliere($datei, [string[]]$argumente) {
+    $stdoutDatei = [System.IO.Path]::GetTempFileName()
+    $stderrDatei = [System.IO.Path]::GetTempFileName()
+    try {
+        $prozess = Start-Process -FilePath $datei -ArgumentList $argumente -WorkingDirectory $InstallDir `
+            -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $stdoutDatei -RedirectStandardError $stderrDatei
+        $ausgabe = @(
+            (Get-Content $stdoutDatei -Raw -ErrorAction SilentlyContinue)
+            (Get-Content $stderrDatei -Raw -ErrorAction SilentlyContinue)
+        ) -join "`n"
+        if ($ausgabe.Trim()) {
+            Add-Content -Path $LogFile -Value $ausgabe
+            Write-Host $ausgabe
+        }
+        return $prozess.ExitCode
+    } finally {
+        Remove-Item $stdoutDatei, $stderrDatei -ErrorAction SilentlyContinue
+    }
 }
 
 function Fehlerblock($titel, [string[]]$zeilen) {
@@ -96,9 +121,9 @@ Log "Node.js gefunden: $nodeVersion ($($node.Source))"
 if (-not (Test-Path "node_modules\dotenv")) {
     Write-Host "Erste Einrichtung: Bausteine werden installiert, einen Moment..."
     Log "Fuehre npm install aus ..."
-    npm install 2>&1 | Tee-Object -FilePath $LogFile -Append | Out-Host
-    if ($LASTEXITCODE -ne 0) {
-        Log "npm install fehlgeschlagen, Exit-Code $LASTEXITCODE"
+    $installExitCode = FuehreAusUndProtokolliere "npm.cmd" @("install")
+    if ($installExitCode -ne 0) {
+        Log "npm install fehlgeschlagen, Exit-Code $installExitCode"
         Fehlerblock "Die Installation ist fehlgeschlagen." @(
             "Bitte manuell versuchen: in diesem Ordner eine",
             "Eingabeaufforderung oeffnen und 'npm install' eingeben.",
@@ -124,7 +149,7 @@ if (-not (Test-Path "node_modules\dotenv")) {
 if (-not (Test-Path "public\bundle.js")) {
     Write-Host "Oberflaeche wird einmalig gebaut, einen Moment..."
     Log "Fuehre npm run build aus ..."
-    npm run build 2>&1 | Tee-Object -FilePath $LogFile -Append | Out-Host
+    FuehreAusUndProtokolliere "npm.cmd" @("run", "build") | Out-Null
     if (-not (Test-Path "public\bundle.js")) {
         Log "public\bundle.js fehlt weiterhin nach dem Build."
         Fehlerblock "Die Oberflaeche konnte nicht gebaut werden." @(
@@ -176,14 +201,17 @@ $url = "${protokoll}://${host_}$portTeil"
 
 Start-Process $url
 
-# WICHTIG: npm start wird - anders als vorher - jetzt ebenfalls mitprotokolliert
-# (wie schon npm install/npm run build oben). Vorher landete die eigentliche
-# Fehlermeldung von Node bei einem Absturz (z. B. "listen EADDRINUSE") NUR im
-# unsichtbaren Konsolenfenster von Start-Hidden.vbs und nirgends sonst - im
-# Protokoll stand dann nur "Exit-Code 1" ohne jede Erklaerung.
-npm start 2>&1 | Tee-Object -FilePath $LogFile -Append | Out-Host
-$exitCode = $LASTEXITCODE
-Log "npm start beendet, Exit-Code $exitCode"
+# "npm start" ruft laut package.json ohnehin nur "node server.js" auf -
+# hier direkt node aufrufen statt über den npm.cmd-Batch-Wrapper, das
+# vermeidet die zusätzliche cmd.exe-Zwischenschicht (und damit deren
+# Ausgabe-Eigenheiten) komplett. Wird jetzt vollständig mitprotokolliert -
+# vorher landete die eigentliche Fehlermeldung von Node bei einem Absturz
+# (z. B. "listen EADDRINUSE") NUR im unsichtbaren Konsolenfenster von
+# Start-Hidden.vbs und nirgends sonst - im Protokoll stand dann nur
+# "Exit-Code 1" ohne jede Erklärung.
+Log "Starte 'node server.js' ..."
+$exitCode = FuehreAusUndProtokolliere "node" @("server.js")
+Log "node server.js beendet, Exit-Code $exitCode"
 
 if ($exitCode -ne 0) {
     $protokollText = Get-Content $LogFile -Raw

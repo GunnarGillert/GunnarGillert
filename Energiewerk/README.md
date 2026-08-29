@@ -155,16 +155,29 @@ pro Maschine zu prüfen – das lässt sich nicht pauschal beheben.
 
 **Ebenfalls beim ersten echten Windows-Test aufgefallen:** Die gerade neu
 protokollierte `npm start`-Ausgabe erschien "verstreut" mit einem
-Leerzeichen nach jedem Buchstaben (z. B. `n o d e   s e r v e r . j s`) -
-das klassische Symptom, wenn die Windows-Konsolen-Codepage nicht zur
-tatsächlichen Textkodierung passt, sobald die Ausgabe eines `.cmd`-Batch-
-Wrappers wie `npm.cmd` per Pipe/`Tee-Object` abgegriffen wird (bereits
-bei `npm install`/`npm run build` latent vorhanden, dort aber bisher nie
-aufgefallen, weil node_modules/bundle.js bei jedem bisherigen Testlauf
-schon vorhanden waren und diese Schritte deshalb übersprungen wurden).
-Behoben: `Start.ps1` erzwingt jetzt zu Beginn `chcp 65001` sowie
-UTF-8 als Konsolen-Ausgabekodierung, bevor überhaupt ein `npm`-Befehl
-läuft.
+Leerzeichen nach jedem Buchstaben (z. B. `n o d e   s e r v e r . j s`).
+Ein erster Versuch, das über `chcp 65001` plus erzwungene UTF-8-
+Konsolenkodierung zu beheben, schlug beim erneuten Test **nachweislich
+fehl** - derselbe Fehler trat identisch wieder auf. Tatsächliche Ursache
+(nach Korrektur der ursprünglichen Kodierungs-Theorie): **PowerShells
+eigene Pipeline-/Anzeigeformatierung**, nicht die Konsolen-Codepage - das
+exakte Muster (ein Leerzeichen nach jedem Zeichen, zwei nach dem
+ursprünglichen Leerzeichen selbst) entspricht genau dem, wie PowerShell
+ein Array beim Anzeigen mit Leerzeichen zusammenfügt, wenn die Ausgabe
+eines `.cmd`-Batch-Wrappers (`npm.cmd`, läuft intern über cmd.exe) per
+`2>&1 | Tee-Object` abgegriffen wird (bereits bei `npm install`/
+`npm run build` latent vorhanden, dort aber nie aufgefallen, weil
+node_modules/bundle.js bei jedem bisherigen Testlauf schon vorhanden
+waren). Endgültig behoben, strukturell statt über Kodierungs-Parameter:
+`Start.ps1` fängt die Ausgabe aller drei `npm`-/Node-Aufrufe jetzt über
+`Start-Process -RedirectStandardOutput/-RedirectStandardError` auf
+Dateiebene ab (umgeht PowerShells Pipeline-Formatierung komplett) und
+ruft für den eigentlichen Serverstart außerdem direkt `node server.js`
+statt `npm start` auf (spart die `cmd.exe`-Zwischenschicht ganz ein -
+`npm start` tut laut `package.json` ohnehin nichts anderes). **Lehre für
+nächstes Mal:** Bei diesem Fehlerbild nicht wieder zuerst an der
+Zeichenkodierung drehen, sondern direkt strukturell über Datei-Umleitung
+gehen.
 
 **Server-seitiges Logging grundlegend nachgezogen** (Auslöser: genau die
 beiden obigen Debugging-Runden zeigten, dass `debug.log` bis dahin viel zu
