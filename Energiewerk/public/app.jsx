@@ -607,8 +607,34 @@ function Einstellungen() {
   const [hochladeLaeuft, setHochladeLaeuft] = useState(false);
   const [hochladeFehler, setHochladeFehler] = useState("");
 
+  const [einstellungen, setEinstellungen] = useState(undefined);
+  const [claudeKey, setClaudeKey] = useState("");
+  const [claudeStatus, setClaudeStatus] = useState("");
+  const [claudeTestLaeuft, setClaudeTestLaeuft] = useState(false);
+
+  const [praefix, setPraefix] = useState("");
+  const [naechsteNummer, setNaechsteNummer] = useState("");
+  const [auftragsnummerStatus, setAuftragsnummerStatus] = useState("");
+
+  const [smtp, setSmtp] = useState({ host: "", port: 465, verschluesselung: "ssl", benutzername: "", absenderName: "", absenderEmail: "" });
+  const [smtpPasswort, setSmtpPasswort] = useState("");
+  const [smtpStatus, setSmtpStatus] = useState("");
+
+  const [github, setGithub] = useState({ owner: "", repo: "", branch: "" });
+  const [githubToken, setGithubToken] = useState("");
+  const [githubStatus, setGithubStatus] = useState("");
+  const [updateInfo, setUpdateInfo] = useState(null);
+  const [updatePruefungLaeuft, setUpdatePruefungLaeuft] = useState(false);
+
   const laden = useCallback(() => {
     ladeJson("/api/einstellungen/merkblatt").then(setMerkblatt).catch(() => setMerkblatt(null));
+    ladeJson("/api/einstellungen").then((e) => {
+      setEinstellungen(e);
+      setPraefix(e.fallnummernPraefix);
+      setNaechsteNummer(String(e.naechsteFallnummer));
+      setSmtp(e.smtp);
+      setGithub(e.github);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => { laden(); }, [laden]);
@@ -628,6 +654,94 @@ function Einstellungen() {
       setHochladeFehler(fehler.message);
     } finally {
       setHochladeLaeuft(false);
+    }
+  }
+
+  async function claudeSpeichern() {
+    setClaudeStatus("Speichert …");
+    try {
+      await ladeJson("/api/einstellungen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ anthropicApiKey: claudeKey }),
+      });
+      setClaudeKey("");
+      setClaudeStatus("Gespeichert.");
+      laden();
+    } catch (fehler) {
+      setClaudeStatus(`Fehler: ${fehler.message}`);
+    }
+  }
+
+  async function claudeVerbindungTesten() {
+    setClaudeTestLaeuft(true);
+    setClaudeStatus("");
+    try {
+      const ergebnis = await ladeJson("/api/einstellungen/verbindung-testen", { method: "POST" });
+      setClaudeStatus(ergebnis.meldung);
+    } catch (fehler) {
+      setClaudeStatus(`Fehler: ${fehler.message}`);
+    } finally {
+      setClaudeTestLaeuft(false);
+    }
+  }
+
+  async function auftragsnummerSpeichern() {
+    setAuftragsnummerStatus("Speichert …");
+    try {
+      await ladeJson("/api/einstellungen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fallnummernPraefix: praefix, naechsteFallnummer: parseInt(naechsteNummer, 10) || 1 }),
+      });
+      setAuftragsnummerStatus("Gespeichert.");
+      laden();
+    } catch (fehler) {
+      setAuftragsnummerStatus(`Fehler: ${fehler.message}`);
+    }
+  }
+
+  async function smtpSpeichern() {
+    setSmtpStatus("Speichert …");
+    try {
+      await ladeJson("/api/einstellungen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ smtp }),
+      });
+      setSmtpStatus("Gespeichert. Passwort bitte separat als SMTP_PASSWORT in der .env hinterlegen.");
+      laden();
+    } catch (fehler) {
+      setSmtpStatus(`Fehler: ${fehler.message}`);
+    }
+  }
+
+  async function githubSpeichern() {
+    setGithubStatus("Speichert …");
+    try {
+      await ladeJson("/api/einstellungen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ github, githubToken }),
+      });
+      setGithubToken("");
+      setGithubStatus("Gespeichert.");
+      laden();
+    } catch (fehler) {
+      setGithubStatus(`Fehler: ${fehler.message}`);
+    }
+  }
+
+  async function nachUpdatesSuchen() {
+    setUpdatePruefungLaeuft(true);
+    setUpdateInfo(null);
+    try {
+      const ergebnis = await ladeJson("/api/update/pruefen");
+      setUpdateInfo(ergebnis);
+    } catch (fehler) {
+      setUpdateInfo({ hinweis: `Fehler: ${fehler.message}` });
+    } finally {
+      setUpdatePruefungLaeuft(false);
     }
   }
 
@@ -660,6 +774,128 @@ function Einstellungen() {
           {hochladeLaeuft && <span> Wird hochgeladen und ausgelesen …</span>}
         </div>
         {hochladeFehler && <div className="leer">Fehler: {hochladeFehler}</div>}
+      </div>
+
+      <div className="karte-panel">
+        <h3>Claude-API</h3>
+        <p style={{ color: "#5c6b66", fontSize: 13.5 }}>
+          Wird für die automatische Dokumenttyp-Erkennung und die U-Wert-Prüfung genutzt. Der
+          Key bleibt ausschließlich serverseitig gespeichert.
+        </p>
+        <div className="feld-zeile">
+          <div className="feld">
+            <div className="label">API-Key {einstellungen?.anthropicApiKeyGesetzt ? "(hinterlegt)" : ""}</div>
+            <input type="text" placeholder="sk-ant-…" value={claudeKey} onChange={(e) => setClaudeKey(e.target.value)} style={{ minWidth: 320 }} />
+          </div>
+        </div>
+        <button className="aktion" onClick={claudeSpeichern}>Speichern</button>
+        <button className="aktion sekundaer" onClick={claudeVerbindungTesten} disabled={claudeTestLaeuft}>
+          {claudeTestLaeuft ? "Testet …" : "Verbindung testen"}
+        </button>
+        {claudeStatus && <div style={{ marginTop: 6, fontSize: 13.5 }}>{claudeStatus}</div>}
+      </div>
+
+      <div className="karte-panel">
+        <h3>Auftragsnummer</h3>
+        <div className="feld-zeile">
+          <div className="feld">
+            <div className="label">Präfix</div>
+            <input type="text" placeholder="EW" value={praefix} onChange={(e) => setPraefix(e.target.value)} style={{ width: 80 }} />
+          </div>
+          <div className="feld">
+            <div className="label">Nächste laufende Nummer</div>
+            <input type="number" min="1" value={naechsteNummer} onChange={(e) => setNaechsteNummer(e.target.value)} style={{ width: 120 }} />
+          </div>
+        </div>
+        <button className="aktion" onClick={auftragsnummerSpeichern}>Speichern</button>
+        {auftragsnummerStatus && <div style={{ marginTop: 6, fontSize: 13.5 }}>{auftragsnummerStatus}</div>}
+      </div>
+
+      <div className="karte-panel">
+        <h3>E-Mail-Versand (SMTP)</h3>
+        <p style={{ color: "#5c6b66", fontSize: 13.5 }}>
+          Für den künftigen automatischen Mailversand (Vergabe-Mitteilung, Bescheid-Weiterleitung,
+          Rechnungsversand - siehe README, noch nicht umgesetzt). Passwort steht aus
+          Sicherheitsgründen nur lokal in der .env (SMTP_PASSWORT).
+        </p>
+        <div className="feld-zeile">
+          <div className="feld">
+            <div className="label">SMTP-Server</div>
+            <input type="text" value={smtp.host} onChange={(e) => setSmtp({ ...smtp, host: e.target.value })} />
+          </div>
+          <div className="feld">
+            <div className="label">Port</div>
+            <input type="number" value={smtp.port} onChange={(e) => setSmtp({ ...smtp, port: parseInt(e.target.value, 10) || 465 })} style={{ width: 90 }} />
+          </div>
+          <div className="feld">
+            <div className="label">Verschlüsselung</div>
+            <select value={smtp.verschluesselung} onChange={(e) => setSmtp({ ...smtp, verschluesselung: e.target.value })}>
+              <option value="ssl">SSL/TLS (Port meist 465)</option>
+              <option value="starttls">STARTTLS (Port meist 587)</option>
+            </select>
+          </div>
+        </div>
+        <div className="feld-zeile">
+          <div className="feld">
+            <div className="label">Benutzername</div>
+            <input type="text" value={smtp.benutzername} onChange={(e) => setSmtp({ ...smtp, benutzername: e.target.value })} />
+          </div>
+          <div className="feld">
+            <div className="label">Absendername</div>
+            <input type="text" value={smtp.absenderName} onChange={(e) => setSmtp({ ...smtp, absenderName: e.target.value })} />
+          </div>
+          <div className="feld">
+            <div className="label">Absender-E-Mail-Adresse</div>
+            <input type="text" value={smtp.absenderEmail} onChange={(e) => setSmtp({ ...smtp, absenderEmail: e.target.value })} />
+          </div>
+        </div>
+        <button className="aktion" onClick={smtpSpeichern}>Speichern</button>
+        {smtpStatus && <div style={{ marginTop: 6, fontSize: 13.5 }}>{smtpStatus}</div>}
+      </div>
+
+      <div className="karte-panel">
+        <h3>GitHub-Repo (für Aktualisieren)</h3>
+        <p style={{ color: "#5c6b66", fontSize: 13.5 }}>
+          Wird von Update.bat benutzt, um die neueste Version zu laden. Ein Token ist nur nötig,
+          falls das Repository privat ist.
+        </p>
+        <div className="feld-zeile">
+          <div className="feld">
+            <div className="label">Owner</div>
+            <input type="text" value={github.owner} onChange={(e) => setGithub({ ...github, owner: e.target.value })} />
+          </div>
+          <div className="feld">
+            <div className="label">Repository</div>
+            <input type="text" value={github.repo} onChange={(e) => setGithub({ ...github, repo: e.target.value })} />
+          </div>
+          <div className="feld">
+            <div className="label">Branch (leer = Standard-Branch)</div>
+            <input type="text" value={github.branch} onChange={(e) => setGithub({ ...github, branch: e.target.value })} />
+          </div>
+          <div className="feld">
+            <div className="label">Zugriffstoken (nur bei privatem Repo nötig) {einstellungen?.githubTokenGesetzt ? "(hinterlegt)" : ""}</div>
+            <input type="text" placeholder="unverändert lassen = alten Wert behalten" value={githubToken} onChange={(e) => setGithubToken(e.target.value)} style={{ minWidth: 260 }} />
+          </div>
+        </div>
+        <button className="aktion" onClick={githubSpeichern}>Speichern</button>
+        <button className="aktion sekundaer" onClick={nachUpdatesSuchen} disabled={updatePruefungLaeuft}>
+          {updatePruefungLaeuft ? "Prüft …" : "Nach Updates suchen"}
+        </button>
+        {githubStatus && <div style={{ marginTop: 6, fontSize: 13.5 }}>{githubStatus}</div>}
+        <p style={{ color: "#5c6b66", fontSize: 12.5, marginTop: 10 }}>
+          Prüft nur, ob eine neuere Version vorliegt - installiert nichts automatisch. Eine
+          gefundene neue Version muss anschließend manuell über Update.bat (als Administrator)
+          installiert werden.
+        </p>
+        {updateInfo?.installierteVersion && (
+          <div style={{ fontSize: 13.5 }}>
+            Aktuell installierte Version: Commit {updateInfo.installierteVersion.commit}
+            {updateInfo.installierteVersion.branch ? ` (Branch ${updateInfo.installierteVersion.branch})` : ""}
+            {updateInfo.installierteVersion.installiertAm ? ` - installiert am ${formatDatum(updateInfo.installierteVersion.installiertAm)}` : ""}
+          </div>
+        )}
+        {updateInfo?.hinweis && <div style={{ fontSize: 13.5, marginTop: 4 }}>{updateInfo.hinweis}</div>}
+        {updateInfo?.fehler && <div style={{ fontSize: 13.5, marginTop: 4, color: "#b3261e" }}>Fehler: {updateInfo.fehler}</div>}
       </div>
     </div>
   );

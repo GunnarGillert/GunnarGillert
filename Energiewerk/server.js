@@ -114,16 +114,63 @@ async function schreibe(dir, id, eintrag) {
   return eintrag;
 }
 
+function leereEinstellungen() {
+  return {
+    naechsteFallnummer: 1,
+    fallnummernPraefix: "EW",
+    anthropicApiKey: "",
+    smtp: { host: "smtp.strato.de", port: 465, verschluesselung: "ssl", benutzername: "", absenderName: "", absenderEmail: "" },
+    github: { owner: "GunnarGillert", repo: "Maler_Luft", branch: "" },
+    githubToken: "",
+  };
+}
+
 async function leseEinstellungen() {
   try {
     return JSON.parse(await fsp.readFile(SETTINGS_PATH, "utf8"));
   } catch {
-    return { naechsteFallnummer: 1, fallnummernPraefix: "EW", anthropicApiKey: "" };
+    return leereEinstellungen();
   }
 }
 
 async function schreibeEinstellungen(einstellungen) {
   await fsp.writeFile(SETTINGS_PATH, JSON.stringify(einstellungen, null, 2));
+}
+
+// Blendet Secrets aus, bevor Einstellungen an den Client gehen - der Client
+// erfährt nur, OB ein Wert hinterlegt ist (für die Anzeige "(hinterlegt)"),
+// nie den Wert selbst. Wie bei Parkwerk.
+function maskiereEinstellungen(einstellungen) {
+  const { anthropicApiKey, githubToken, ...rest } = einstellungen;
+  const smtp = einstellungen.smtp || {};
+  const github = einstellungen.github || {};
+  return {
+    ...rest,
+    fallnummernPraefix: einstellungen.fallnummernPraefix || "EW",
+    naechsteFallnummer: einstellungen.naechsteFallnummer || 1,
+    anthropicApiKeyGesetzt: Boolean(anthropicApiKey || process.env.ANTHROPIC_API_KEY),
+    smtp: {
+      host: smtp.host || "smtp.strato.de",
+      port: smtp.port || 465,
+      verschluesselung: smtp.verschluesselung || "ssl",
+      benutzername: smtp.benutzername || "",
+      absenderName: smtp.absenderName || "",
+      absenderEmail: smtp.absenderEmail || "",
+    },
+    github: {
+      owner: github.owner || "GunnarGillert",
+      repo: github.repo || "Maler_Luft",
+      branch: github.branch || "",
+    },
+    githubTokenGesetzt: Boolean(githubToken || process.env.GITHUB_TOKEN),
+  };
+}
+
+function formatDatumDe(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("de-DE");
 }
 
 async function naechsteVorgangsnummer() {
@@ -735,6 +782,121 @@ app.get("/api/vorgaenge/:id/dokumente/:dokumentId/datei", async (req, res) => {
 });
 
 app.get("/api/dokumenttypen", (req, res) => res.json(DOKUMENTTYPEN));
+
+// ----------------------------------------------------------------------------
+// API: Einstellungen - Claude-API, Auftragsnummer, SMTP, GitHub-Update
+// ----------------------------------------------------------------------------
+app.get("/api/einstellungen", async (req, res) => {
+  const einstellungen = await leseEinstellungen();
+  res.json(maskiereEinstellungen(einstellungen));
+});
+
+app.post("/api/einstellungen", async (req, res) => {
+  // Leere Platzhalter für maskierte Secrets nicht versehentlich über die
+  // echten, bereits gespeicherten Werte schreiben ("unverändert lassen" in
+  // der Oberfläche - wie bei Parkwerk).
+  const eingabe = { ...req.body };
+  if (!eingabe.anthropicApiKey) delete eingabe.anthropicApiKey;
+  if (!eingabe.githubToken) delete eingabe.githubToken;
+
+  const einstellungen = await leseEinstellungen();
+  const neu = { ...einstellungen, ...eingabe };
+  if (eingabe.smtp) neu.smtp = { ...einstellungen.smtp, ...eingabe.smtp };
+  if (eingabe.github) neu.github = { ...einstellungen.github, ...eingabe.github };
+  await schreibeEinstellungen(neu);
+  debugLog("einstellungen", `Einstellungen aktualisiert: ${Object.keys(eingabe).join(", ")}`);
+  res.json(maskiereEinstellungen(neu));
+});
+
+app.post("/api/einstellungen/verbindung-testen", async (req, res) => {
+  const einstellungen = await leseEinstellungen();
+  const apiKey = einstellungen.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.json({ ok: false, meldung: "Kein API-Key hinterlegt." });
+  try {
+    const antwort = await fetchMitZeitlimit("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8, messages: [{ role: "user", content: "Hallo" }] }),
+    }, 20000);
+    res.json({ ok: antwort.ok, meldung: antwort.ok ? "Verbindung erfolgreich." : `Fehler: HTTP ${antwort.status}` });
+  } catch (fehler) {
+    res.json({ ok: false, meldung: fehler.message });
+  }
+});
+
+// Zeigt nur an, ob eine neuere Version vorliegt - installiert NICHTS
+// automatisch (wie bei Parkwerk: ein automatischer Selbst-Update während
+// des Betriebs wäre riskant, solange mehrere Personen gleichzeitig
+// arbeiten - die tatsächliche Installation bleibt bewusst manuell über
+// Update.bat).
+async function leseInstallierteVersion() {
+  try {
+    const daten = JSON.parse(await fsp.readFile(path.join(__dirname, "version-info.json"), "utf8"));
+    return daten.commitSha ? { commit: daten.commitSha.slice(0, 7), branch: daten.branch, installiertAm: daten.installiertAm } : null;
+  } catch {
+    return null;
+  }
+}
+
+app.get("/api/update/pruefen", async (req, res) => {
+  const installierteVersion = await leseInstallierteVersion();
+  try {
+    const einstellungen = await leseEinstellungen();
+    const { owner, repo, branch } = einstellungen.github || {};
+    // Bei einem privaten Repo antwortet GitHub auf unauthentifizierte
+    // Anfragen bewusst mit 404 statt 403 (verrät die Existenz privater
+    // Repos nicht) - das Token muss deshalb tatsächlich mitgeschickt
+    // werden. .env (GITHUB_TOKEN) hat Vorrang vor dem in den Einstellungen
+    // gespeicherten Token.
+    const token = process.env.GITHUB_TOKEN || einstellungen.githubToken;
+    const headers = {
+      "User-Agent": "Energiewerk",
+      Accept: "application/vnd.github+json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    const zweig = branch || (await (async () => {
+      const antwort = await fetchMitZeitlimit(`https://api.github.com/repos/${owner}/${repo}`, { headers }, 15000);
+      if (!antwort.ok) throw new Error(`Repository nicht erreichbar (HTTP ${antwort.status})`);
+      return (await antwort.json()).default_branch;
+    })());
+
+    const commitAntwort = await fetchMitZeitlimit(`https://api.github.com/repos/${owner}/${repo}/commits/${zweig}`, { headers }, 15000);
+    if (!commitAntwort.ok) throw new Error(`Commit-Abfrage fehlgeschlagen (HTTP ${commitAntwort.status})`);
+    const commitDaten = await commitAntwort.json();
+    const aktuellerCommit = commitDaten.sha;
+    const commitDatum = commitDaten.commit?.committer?.date;
+
+    if (!installierteVersion) {
+      return res.json({
+        statusBekannt: false,
+        installierteVersion: null,
+        neuesteVersion: { commit: aktuellerCommit.slice(0, 7), datum: commitDatum },
+        hinweis: "Die aktuell installierte Version ist nicht bekannt (vermutlich eine Erstinstallation ohne " +
+          "Update.ps1). Neuester Stand auf GitHub: Commit " + aktuellerCommit.slice(0, 7) + " vom " +
+          formatDatumDe(commitDatum) + ". Bei Unsicherheit: Update.bat ausführen, das installiert immer den " +
+          "aktuellen Stand.",
+      });
+    }
+
+    if (aktuellerCommit.startsWith(installierteVersion.commit)) {
+      return res.json({ statusBekannt: true, installierteVersion, neueVersionVerfuegbar: false, hinweis: "Energiewerk ist bereits auf dem neuesten Stand." });
+    }
+
+    res.json({
+      statusBekannt: true,
+      neueVersionVerfuegbar: true,
+      neuesteVersion: { commit: aktuellerCommit.slice(0, 7), datum: commitDatum },
+      installierteVersion,
+      hinweis: `Eine neuere Version ist verfügbar (Commit ${aktuellerCommit.slice(0, 7)} vom ${formatDatumDe(commitDatum)}). ` +
+        "Bitte Update.bat manuell als Administrator ausführen, um zu aktualisieren.",
+    });
+  } catch (fehler) {
+    // Bewusst HTTP 200 (statt 500): der GitHub-Abgleich ist fehlgeschlagen,
+    // aber installierteVersion ist rein lokal ermittelt und bleibt gültig.
+    res.json({ statusBekannt: Boolean(installierteVersion), installierteVersion, fehler: fehler.message });
+  }
+});
 
 // ----------------------------------------------------------------------------
 // API: Einstellungen - Merkblatt (KfW) für die U-Wert-Prüfung

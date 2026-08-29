@@ -11,9 +11,12 @@ Fensterbauerverwaltung inkl. Suche/Filter, gefüllt mit Beispieldaten, einem
 Unterlagen-Upload direkt am Vorgang mit automatischer Dokumenttyp-Erkennung
 (Dateiname, bei Bedarf PDF-Textebene/OCR + KI-Vorschlag) sowie einem
 Einstellungen-Reiter mit Merkblatt-Ablage (KfW) für die automatische
-U-Wert-Prüfung. Login, Mailversand, PDF/E-Rechnung und der eigenständige
-Eingangs-Ordner-Watcher aus dieser Skizze sind im Prototyp noch **nicht**
-umgesetzt. Lokal starten:
+U-Wert-Prüfung sowie den üblichen Parkwerk/Farbwerk-Einstellungsblöcken
+(Claude-API-Key inkl. Verbindungstest, Auftragsnummern-Präfix/-Zähler,
+SMTP-Konfiguration für den späteren Mailversand, GitHub-Repo samt
+„Nach Updates suchen"). Login, tatsächlicher Mailversand, PDF/E-Rechnung
+und der eigenständige Eingangs-Ordner-Watcher aus dieser Skizze sind im
+Prototyp noch **nicht** umgesetzt. Lokal starten:
 
 ```
 cd Energiewerk
