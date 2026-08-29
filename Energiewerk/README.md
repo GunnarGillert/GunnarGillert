@@ -210,6 +210,39 @@ Mit einer absichtlich beschädigten JSON-Datei im Datenordner end-to-end
 verifiziert: Anfrage kommt sofort mit `500` zurück (statt zu hängen), voller
 Stacktrace erscheint in `debug.log`.
 
+**Beim ersten echten Update auf einem als Windows-Dienst laufenden Server
+aufgefallen:** Nach einem Update über `Update.bat` zeigte die Oberfläche
+zwar neue Bedienelemente (z. B. den „Verbindung testen"-Knopf bei der
+Claude-API), ein Klick darauf lieferte aber `HTTP 404` – als liefe im
+Hintergrund noch der alte Server-Code, obwohl `bundle.js` sichtbar
+aktuell war. Ursache: `Install.ps1`/`Update.ps1` beendeten eine laufende
+Instanz bis dahin blind per `Stop-Process` auf den `node.exe`-Prozess,
+ohne zu wissen, dass Energiewerk als Windows-Dienst läuft
+(`Service-Install.bat`, `node-windows`). Der Dienst hat über
+`node-windows` eine **eigene** Absturz-Wiederanlauf-Logik (`maxRestarts`)
+– der gekillte Prozess wurde dadurch vermutlich sofort wieder
+hochgefahren, und zwar noch mit dem **alten** `server.js`, weil die neuen
+Programmdateien erst danach kopiert wurden. `bundle.js` (wird bei jedem
+Aufruf frisch von der Platte ausgeliefert) zeigte dadurch schon die neue
+Oberfläche, während der Server im Hintergrund weiterhin die alte Version
+war und die neue Route entsprechend nicht kannte. Behoben: `Install.ps1`
+und `Update.ps1` prüfen jetzt zuerst per `Get-Service -Name "Energiewerk"`,
+ob ein Dienst registriert ist, und halten ihn in diesem Fall sauber über
+`Stop-Service` an (unterbindet den automatischen Wiederanlauf), statt den
+Prozess roh zu killen. Nach dem Kopieren der neuen Dateien startet
+`Install.ps1` den Dienst am Ende wieder selbst über `Start-Service`;
+`Update.ps1` startet ihn nur dann zusätzlich, wenn er wider Erwarten noch
+nicht läuft, und startet **nicht** zusätzlich `Start-Hidden.vbs` (das
+würde einen zweiten, dienstunabhängigen Prozess auf demselben Port
+starten). Läuft Energiewerk dagegen nicht als Dienst (Desktop-Betrieb über
+die Verknüpfung/`Start.bat`), bleibt das Verhalten unverändert.
+
+**Für Betroffene mit diesem Fehlerbild:** Einmalig
+`Service-Uninstall.bat` und danach `Service-Install.bat` erneut ausführen
+(oder den Dienst über `services.msc` neu starten), damit garantiert der
+aktuelle Server-Code läuft – ab dem nächsten Update greift die Behebung
+automatisch.
+
 ## Warum
 
 Das Fördergeschäft ist operativ klar, aber technologisch fragmentiert:

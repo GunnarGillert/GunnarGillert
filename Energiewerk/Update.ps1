@@ -65,8 +65,29 @@ if (-not (Test-Path $InstallDir)) {
 
 # ---------------------------------------------------------------------------
 # 1. Laufende Instanz beenden
+#
+#    WICHTIG (Windows-Dienst): Laeuft Energiewerk als Windows-Dienst (per
+#    Service-Install.bat), dann NICHT den node.exe-Prozess blind killen -
+#    node-windows' eigene Absturz-Wiederanlauf-Logik (maxRestarts) wuerde
+#    den Prozess sonst vermutlich sofort mit dem noch ALTEN server.js neu
+#    starten, WAEHREND unten erst noch die neue Version heruntergeladen und
+#    kopiert wird. Ergebnis waere eine neue Oberflaeche bei weiterhin altem
+#    Server-Code im Hintergrund. Stop-Service unterbindet diesen
+#    automatischen Wiederanlauf; der Dienst wird ganz am Ende (Abschnitt 5)
+#    bzw. bereits durch das unten aufgerufene Install.ps1 wieder gestartet.
 # ---------------------------------------------------------------------------
 Abschnitt "Laufende Instanz wird beendet"
+
+$Dienst = Get-Service -Name "Energiewerk" -ErrorAction SilentlyContinue
+if ($Dienst) {
+    if ($Dienst.Status -ne "Stopped") {
+        Write-Host "Energiewerk laeuft als Windows-Dienst - wird angehalten ..."
+        Stop-Service -Name "Energiewerk" -Force -ErrorAction SilentlyContinue
+        try { $Dienst.WaitForStatus("Stopped", (New-TimeSpan -Seconds 30)) } catch {}
+    }
+    Write-Host "Windows-Dienst 'Energiewerk' angehalten."
+}
+
 $prozesse = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -like "*server.js*" -and $_.CommandLine -like "*Energiewerk*" }
 
@@ -76,7 +97,7 @@ if ($prozesse) {
     }
     Write-Host "Energiewerk wurde beendet."
     Start-Sleep -Seconds 1
-} else {
+} elseif (-not $Dienst) {
     Write-Host "Energiewerk lief aktuell nicht."
 }
 
@@ -238,12 +259,31 @@ if ($AktuellerCommitSha) {
 Remove-Item -Path $TempDir -Recurse -Force -ErrorAction SilentlyContinue
 
 Abschnitt "Energiewerk wird neu gestartet"
-$StartScript = Join-Path $InstallDir "Start-Hidden.vbs"
-if (Test-Path $StartScript) {
-    Start-Process "wscript.exe" -ArgumentList "`"$StartScript`""
-    Write-Host "Energiewerk wurde neu gestartet - der Browser oeffnet sich gleich automatisch."
+if ($Dienst) {
+    # Das oben aufgerufene Install.ps1 startet einen als Dienst laufenden
+    # Energiewerk bereits selbst wieder (siehe dessen Abschnitt 8) - hier
+    # nur noch pruefen/absichern, damit KEIN zweiter, dienstunabhaengiger
+    # Prozess per Start-Hidden.vbs obendrauf gestartet wird (Portkonflikt).
+    $DienstStatus = Get-Service -Name "Energiewerk" -ErrorAction SilentlyContinue
+    if ($DienstStatus -and $DienstStatus.Status -ne "Running") {
+        try {
+            Start-Service -Name "Energiewerk"
+            Write-Host "Windows-Dienst 'Energiewerk' gestartet."
+        } catch {
+            Write-Host "Dienst konnte nicht automatisch gestartet werden: $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Host "Bitte manuell ueber services.msc -> 'Energiewerk' -> Starten." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "Windows-Dienst 'Energiewerk' laeuft bereits mit der aktualisierten Version."
+    }
 } else {
-    Write-Host "Start-Hidden.vbs wurde nicht gefunden - bitte manuell ueber die Desktop-Verknuepfung starten." -ForegroundColor Yellow
+    $StartScript = Join-Path $InstallDir "Start-Hidden.vbs"
+    if (Test-Path $StartScript) {
+        Start-Process "wscript.exe" -ArgumentList "`"$StartScript`""
+        Write-Host "Energiewerk wurde neu gestartet - der Browser oeffnet sich gleich automatisch."
+    } else {
+        Write-Host "Start-Hidden.vbs wurde nicht gefunden - bitte manuell ueber die Desktop-Verknuepfung starten." -ForegroundColor Yellow
+    }
 }
 
 Abschnitt "Fertig"

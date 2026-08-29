@@ -68,8 +68,32 @@ if (-not $node) {
 #    "Energiewerk", damit auf demselben Server laufende Schwesterprogramme
 #    (Parkwerk, Farbwerk - gleicher Aufbau, ebenfalls server.js) NICHT
 #    versehentlich mit beendet werden.
+#
+#    WICHTIG (Windows-Dienst): Laeuft Energiewerk als Windows-Dienst (per
+#    Service-Install.bat, siehe scripts/install-service.js), dann darf der
+#    node.exe-Prozess NICHT einfach per Stop-Process gekillt werden. Der
+#    Dienst hat ueber node-windows eine EIGENE Absturz-Wiederanlauf-Logik
+#    (maxRestarts) und wuerde einen so beendeten Prozess vermutlich sofort
+#    wieder hochfahren - mit dem noch ALTEN server.js, weil die neuen
+#    Dateien unten erst noch kopiert werden. Ergebnis: neue Oberflaeche
+#    (bundle.js wird bei jedem Aufruf frisch von der Platte ausgeliefert),
+#    aber weiterhin alter Server-Code im Hintergrund. Deshalb hier zuerst
+#    gezielt pruefen, ob "Energiewerk" als Dienst registriert ist, und ihn
+#    dann sauber ueber Stop-Service anhalten (das unterbindet den
+#    automatischen Wiederanlauf, bis der Dienst weiter unten in Abschnitt 8
+#    wieder bewusst gestartet wird).
 # ---------------------------------------------------------------------------
 Abschnitt "Programmdateien werden kopiert"
+
+$dienst = Get-Service -Name "Energiewerk" -ErrorAction SilentlyContinue
+if ($dienst) {
+    if ($dienst.Status -ne "Stopped") {
+        Write-Host "Energiewerk laeuft als Windows-Dienst - wird angehalten ..."
+        Stop-Service -Name "Energiewerk" -Force -ErrorAction SilentlyContinue
+        try { $dienst.WaitForStatus("Stopped", (New-TimeSpan -Seconds 30)) } catch {}
+    }
+    Write-Host "Windows-Dienst 'Energiewerk' angehalten."
+}
 
 $prozesse = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -like "*server.js*" -and $_.CommandLine -like "*Energiewerk*" }
@@ -469,9 +493,24 @@ if ($httpsEinrichten -eq "j" -or $httpsEinrichten -eq "J") {
 } # Ende: kein bestehendes Zertifikat gefunden
 
 # ---------------------------------------------------------------------------
-# 8. Fertig
+# 8. Fertig - laeuft Energiewerk als Windows-Dienst (siehe Abschnitt 2 oben),
+#    dann jetzt mit den gerade kopierten, neuen Dateien wieder starten.
+#    Ohne diesen Schritt bliebe der Dienst nach einem Update dauerhaft
+#    angehalten, weil Stop-Service (anders als ein gekillter Prozess) KEINEN
+#    automatischen Wiederanlauf ausloest.
 # ---------------------------------------------------------------------------
 Abschnitt "Installation abgeschlossen"
-Write-Host "Energiewerk ueber die Desktop-Verknuepfung starten."
+if ($dienst) {
+    Write-Host "Windows-Dienst 'Energiewerk' wird mit den aktualisierten Dateien neu gestartet ..."
+    try {
+        Start-Service -Name "Energiewerk"
+        Write-Host "Energiewerk (Dienst) laeuft wieder - Status/Verwaltung: services.msc -> 'Energiewerk'." -ForegroundColor Green
+    } catch {
+        Write-Host "Dienst konnte nicht automatisch gestartet werden: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "Bitte manuell ueber services.msc -> 'Energiewerk' -> Starten." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "Energiewerk ueber die Desktop-Verknuepfung starten."
+}
 Write-Host "Danach im Reiter 'Einstellungen' den Claude-API-Key sowie das Merkblatt"
 Write-Host "(KfW) fuer die U-Wert-Pruefung hinterlegen."
