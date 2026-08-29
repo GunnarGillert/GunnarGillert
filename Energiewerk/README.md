@@ -22,6 +22,9 @@ npm start       # http://localhost:4000, Beispieldaten werden beim ersten
                 # Start automatisch angelegt (Energiewerk-Daten/)
 ```
 
+(Das ist der schnelle Weg für Entwicklung/Test. Für eine echte
+Windows-Installation siehe Abschnitt **Installation** unten.)
+
 Aufbau bewusst **analog zu Parkwerk**
 (`GunnarGillert/Maler_Luft/Parkraumprogramm`), also derselbe Baukasten:
 ein einzelner Node.js/Express-Server + React-Oberfläche, **keine
@@ -33,6 +36,105 @@ Es ist bei Maler Luft bereits im Einsatz, bekannt und gewartet (ein
 Node-Prozess, ein Datenordner, ein Update-Weg) – Energiewerk muss dieses
 Rad nicht neu erfinden, sondern denselben Rahmen mit anderen Feldern und
 Vorlagen füllen.
+
+## Installation (Windows)
+
+Wie bei Parkwerk/Farbwerk: 1:1 dieselben Installations-/Betriebsskripte,
+damit sich nichts Neues einarbeiten lässt, wenn man eines der drei
+Programme schon kennt.
+
+### Empfohlen: die Installationsdatei
+
+`Install.bat` per Doppelklick starten. Das Installationsprogramm übernimmt
+automatisch:
+
+- Prüft, ob Node.js vorhanden ist, und installiert es bei Bedarf selbst
+  (über winget oder direkt von nodejs.org).
+- Kopiert das Programm nach `C:\Program Files\Energiewerk`.
+- Installiert die benötigten Programmbausteine (`npm install`, baut dabei
+  auch die Oberfläche).
+- Schlägt einen Datenordner vor (erkennt verbundene OneDrive-/SharePoint-
+  Konten – bei mehreren wird nachgefragt) und legt die `.env` an.
+- Erstellt eine Start-Verknüpfung auf dem Desktop sowie einen eigenen
+  Ordner „Energiewerk" im Startmenü mit den Verknüpfungen
+  **„Energiewerk starten"** und **„Energiewerk aktualisieren"**.
+
+Windows fragt dabei einmal nach Administratorrechten – das ist normal, kurz
+bestätigen. Nach der Installation über die Verknüpfung „Energiewerk"
+starten, dann im Reiter **Einstellungen** den Claude-API-Key sowie das
+Merkblatt (KfW) hinterlegen.
+
+Auf weiteren Rechnern im Team: `Install.bat` dort ebenfalls einmal
+ausführen und beim Datenordner denselben geteilten Pfad angeben, damit
+alle auf dieselben Vorgänge zugreifen.
+
+**Aktualisieren:** `Update.bat` lädt die neueste Version aus
+`GunnarGillert/Maler_Luft` (Unterordner `Energiewerk` wird automatisch
+gefunden - auch wenn im selben Repo noch Parkraumprogramm und Farbwerk mit
+identischem Aufbau liegen) und installiert sie über dieselbe Routine nach –
+Datenordner und `.env` bleiben unberührt.
+
+### Alternative: manuelle Einrichtung ohne Installationsdatei
+
+1. Node.js installieren (Version 20, LTS) von nodejs.org.
+2. Diesen Ordner an einen festen Ort legen, z. B. `C:\Programme\Energiewerk`.
+3. `_env.example` kopieren, in `.env` umbenennen und `DATA_DIR` auf einen
+   Unterordner im lokal gesyncten SharePoint/OneDrive-Ordner setzen.
+4. In diesem Ordner `npm install` ausführen (baut beim ersten Mal auch
+   automatisch die Oberfläche).
+5. `Start.bat` doppelklicken (mit sichtbarem Fenster, gut zur Fehlersuche)
+   oder eine Verknüpfung auf `Start-Hidden.vbs` anlegen (ohne Fenster).
+6. Auf jedem weiteren Rechner im Team denselben Ordner ablegen und
+   Schritt 3–5 wiederholen, dabei denselben `DATA_DIR` eintragen.
+
+### Betrieb auf einem (Windows-)Server statt lokal
+
+Wie bei Parkwerk empfohlen: zentral auf einem Rechner betreiben (z. B.
+Windows 11 mit Autoanmeldung oder als echter Windows-Dienst über
+`Service-Install.bat`), statt auf jedem PC einzeln – vermeidet
+OneDrive-Sync-Konflikte, weil nur noch ein Prozess schreibt.
+
+- **Mit Autoanmeldung**: bei `Install.bat` die Frage nach dem Server-Modus
+  mit „j" beantworten (Autostart-Verknüpfung + Energiesparmodus aus).
+  Autoanmeldung selbst separat mit dem Microsoft-Sysinternals-Tool
+  „Autologon" einrichten (verschlüsselt das Passwort, im Unterschied zu
+  `netplwiz`).
+- **Ohne Autoanmeldung**: `Service-Install.bat` als Administrator ausführen
+  – richtet Energiewerk als Windows-Dienst „Energiewerk" ein (nutzt
+  `node-windows`), läuft dann unabhängig von jeder Anmeldung.
+  `Service-Uninstall.bat` entfernt ihn wieder.
+
+**HTTPS einrichten** – ohne eigene Domain (empfohlen):
+
+1. Bei `Install.bat` die Frage „HTTPS-Zertifikat jetzt erstellen?" mit „j"
+   beantworten, feste IP-Adresse und einen Namen (z. B. `energiewerk`)
+   eingeben. Erzeugt ein zehn Jahre gültiges Zertifikat, trägt `PORT=443`
+   plus PFX-Zugangsdaten in die `.env` ein und legt den Ordner
+   `Client-Installation` an.
+2. Diesen Ordner an alle Kolleginnen und Kollegen verteilen (Netzlaufwerk,
+   USB-Stick, E-Mail-Anhang als ZIP).
+3. Jede Person führt darin `Client-Install.bat` als Administrator aus –
+   trägt einen hosts-Eintrag ein, stuft das Zertifikat als
+   vertrauenswürdig ein (Edge/Chrome, **nicht** Firefox) und legt eine
+   Desktop-Verknüpfung an.
+4. Danach ist Energiewerk unter `https://energiewerk/` ohne
+   Browser-Warnung erreichbar.
+
+Mit eigener Domain stattdessen **Caddy als Reverse Proxy**
+(`Caddyfile.beispiel`) – kümmert sich automatisch um ein echtes
+Let's-Encrypt-Zertifikat; Energiewerk läuft dann intern auf einem anderen
+Port (z. B. 4020, siehe Kommentar in der Datei), zusätzlich `TRUST_PROXY=1`
+in der `.env` setzen.
+
+> **Ungetestet gegen echtes Windows:** Diese komplette Installations-/
+> Betriebskette (`Install.ps1`, `Service-Install.bat`/`node-windows`,
+> Zertifikatserstellung/-verteilung, `Update.ps1`) ist 1:1 von Parkwerk
+> übernommen und dort nach eigener Aussage ebenfalls nur teilweise gegen
+> einen echten Windows-Rechner getestet – für Energiewerk gilt dieselbe
+> Einschränkung, zusätzlich verschärft dadurch, dass die Übernahme hier
+> nur gelesen, nicht selbst nochmal auf Windows nachvollzogen wurde. Vor
+> dem produktiven Einsatz unbedingt einmal auf einem echten Windows-Server
+> durchspielen.
 
 ## Warum
 
@@ -252,24 +354,65 @@ bis tausend Vorgängen/Kunden).
 | Update | `Update.bat` zieht neuesten Commit aus konfiguriertem GitHub-Repo/Unterordner | gleich, Unterordner `Energiewerk` statt `Parkraumprogramm` |
 | Protokollierung | `audit.log` (wer hat was geändert), `debug.log` (technisch), Client-Fehler zusätzlich ans Server-Log | gleich, `audit.log` dient hier zugleich als BAFA-Compliance-Nachweis für U-Wert-Prüfung und Versand |
 
-### Projektstruktur (Vorschlag)
+### Projektstruktur
+
+Die Programmdateien (linke Spalte) sind inzwischen umgesetzt - 1:1 nach dem
+Muster von Parkwerk/Farbwerk (gleiches Repo, gleicher Aufbau), damit
+Installation/Update/Betrieb auf einem Windows-Rechner genauso funktionieren
+wie bei den beiden Schwesterprogrammen. Der Datenordner (rechts/unten) ist
+teilweise noch Vorschlag - siehe Markierungen.
 
 ```
-energiewerk-lokal/
-  Start.bat / Start.ps1 / Start-Hidden.vbs
-  Service-Install.bat / Service-Uninstall.bat
-  Client-Install.bat / Client-Install.ps1
-  Caddyfile.beispiel
-  server.js          Node-Server: Login, Dokument-Erkennung, Vorgangs-
-                      verwaltung, PDF, E-Rechnung, Mailversand, Claude-Proxy
+Energiewerk/
+  Install.bat / Install.ps1              Ersteinrichtung (Node.js, npm
+                                          install, Datenordner, Verknüpfungen,
+                                          optional HTTPS-Zertifikat)
+  Start.bat / Start.ps1 / Start-Hidden.vbs  Programm starten
+  Stop.ps1 / Stop-Hidden.vbs             Programm beenden
+  Service-Install.bat / Service-Uninstall.bat  Als Windows-Dienst (auto)
+                                          ein-/ausrichten (Server-Betrieb)
+  scripts/install-service.js / uninstall-service.js  (von den .bat genutzt)
+  Update.bat / Update.ps1                Holt die neueste Version aus
+                                          github.com/GunnarGillert/Maler_Luft
+                                          (Unterordner "Energiewerk")
+  Caddyfile.beispiel                     Beispiel für HTTPS per Reverse Proxy
+  Client-Install.bat / Client-Install.ps1  Für Kolleg:innen - Zertifikat
+                                          vertrauen, hosts-Eintrag,
+                                          Desktop-Verknüpfung
+  Client-Installation/  (entsteht bei der HTTPS-Einrichtung) - dieser
+                       komplette Ordner wird an Kolleg:innen verteilt
+    energiewerk-zertifikat.cer   öffentliches Zertifikat (ohne privaten
+                                 Schlüssel)
+    verbindungsdaten.json        IP + Name für den Client-Installer
+  energiewerk-server.pfx  (entsteht bei der HTTPS-Einrichtung) Zertifikat
+                       MIT privatem Schlüssel - bleibt auf dem Server, wird
+                       NICHT verteilt (Pfad + Passwort stehen in der .env)
+  server.js          Node-Server: Stammdaten, Vorgangsverwaltung, Unterlagen-
+                      Upload + Erkennung, Merkblatt/U-Wert-Prüfung
   package.json
   _env.example
+  _gitignore           Repo-Konvention wie bei Parkwerk/Farbwerk (node_modules,
+                       public/bundle.js, .env, Energiewerk-Daten/ werden beim
+                       Commit bewusst ausgelassen statt per echtem
+                       .gitignore-Mechanismus ausgeschlossen)
   public/
     index.html
-    app.jsx / entry.jsx / bundle.js
+    app.jsx           Die eigentliche Anwendung (React)
+    entry.jsx         Einstiegspunkt für den Build
+    bundle.js         Fertig gebautes Paket (entsteht bei npm install)
+  icon.ico           Programm-Icon (stilisierter Blitz, Marken-Grün) -
+                      sichtbar als Favicon, im Header sowie für die
+                      Desktop-/Startmenü-Verknüpfungen
 
 Energiewerk-Daten/ (Datenordner, DATA_DIR in .env, im SharePoint/
-                     OneDrive-synchronisierten Bereich)
+                     OneDrive-synchronisierten Bereich) - **aktuell
+                     tatsächlich vorhanden:** settings.json, collections/
+                     {fensterbauer,kunden,vorgaenge,dokumente}/, merkblatt/,
+                     logs/debug.log. Die übrigen Einträge unten (users.json,
+                     .session-secret, rechnungen/, protokolle/, vorlagen/,
+                     audit.log, backup.log) sind weiterhin **Vorschlag**,
+                     sobald Login, E-Rechnung, U-Wert-Protokoll-Ablage,
+                     Mailvorlagen bzw. Cloud-Backup umgesetzt werden:
   settings.json       Firmendaten, Fensterbauer-Liste, Mail-/IMAP-
                        Zugangsdaten-Referenz, Nummernkreis, KI-Prompt-
                        Vorlagen (U-Wert-Prüfung, Bescheid-Parsing)

@@ -1,7 +1,57 @@
-# In .env umbenennen und anpassen.
-# DATA_DIR: Ordner für die Falldaten (später ein SharePoint/OneDrive-Pfad,
-# siehe README.md). Ohne Angabe wird lokal "./Energiewerk-Daten" verwendet.
-DATA_DIR=
+# Diese Datei nach .env kopieren und mit echten Werten füllen.
+# WICHTIG: Diese Datei kann sensible Zugangsdaten enthalten (Claude-API-Key,
+# GitHub-Token) und darf NICHT in den SharePoint/OneDrive-Datenordner gelegt
+# oder weitergegeben werden - sie bleibt lokal auf dem jeweiligen Rechner.
 
-# Port, unter dem der Prototyp lokal erreichbar ist.
-PORT=4000
+# Ordner für die Vorgangsdaten (Kunden, Fensterbauer, Vorgänge, Dokumente,
+# Einstellungen inkl. Merkblatt und Claude-API-Key). Auf den lokalen
+# SharePoint/OneDrive-Ordner zeigen lassen, z. B.:
+# Windows:  C:\Users\<Benutzername>\Maler Luft\Energiewerk-Daten
+# Zeigen mehrere Personen auf denselben (geteilten) Ordner, teilen sie sich
+# automatisch dieselben Vorgänge und den Claude-API-Key.
+# Ohne Angabe wird lokal "./Energiewerk-Daten" verwendet (nur für den
+# Entwicklungs-/Testbetrieb gedacht).
+DATA_DIR=C:\Users\DEIN-BENUTZERNAME\OneDrive\Energiewerk-Daten
+
+# Port, auf dem das Programm erreichbar ist. 443 ist der Standard-Port für
+# HTTPS - passend für einen eigenen Server, den nur Energiewerk selbst nutzt
+# (Browser braucht dann keine Portangabe in der URL). Zusammen mit
+# HTTPS_CERT_PATH/HTTPS_KEY_PATH weiter unten läuft Energiewerk dann direkt
+# per HTTPS. Läuft stattdessen ein Reverse Proxy wie Caddy davor (siehe
+# Caddyfile.beispiel), MUSS dieser Wert auf einen anderen Port geändert
+# werden (z. B. 4020) - Port 443 kann immer nur von einem Programm
+# gleichzeitig benutzt werden. Ohne .env greift der Entwicklungs-Fallback
+# 4000 (siehe server.js).
+PORT=443
+
+# --- Sicherheit / Server-Betrieb --------------------------------------------
+# Auf "1" setzen, wenn ein Reverse Proxy (z. B. Caddy, siehe
+# Caddyfile.beispiel) vor Energiewerk läuft und die HTTPS-Verschlüsselung
+# übernimmt. Sorgt dafür, dass die echte Besucher-IP korrekt erkannt wird.
+# TRUST_PROXY=1
+
+# Nur setzen, wenn Energiewerk OHNE vorgeschalteten Reverse Proxy direkt per
+# HTTPS mit einem eigenen Zertifikat laufen soll (Alternative zu Caddy/nginx).
+# Zwei Varianten - nur EINE davon setzen:
+#
+# a) "Echtes" Zertifikat als PEM-Dateien (z. B. von Let's Encrypt/certbot):
+# HTTPS_CERT_PATH=C:\pfad\zu\fullchain.pem
+# HTTPS_KEY_PATH=C:\pfad\zu\privkey.pem
+#
+# b) Selbstsigniertes Windows-Zertifikat als PFX-Datei (wird von Install.ps1
+# automatisch erzeugt und hier eingetragen, wenn ihr bei der Installation
+# "HTTPS-Zertifikat jetzt erstellen?" mit Ja beantwortet - siehe README,
+# Abschnitt "HTTPS ohne eigene Domain"):
+# HTTPS_PFX_PATH=C:\Program Files\Energiewerk\energiewerk-server.pfx
+# HTTPS_PFX_PASSPHRASE=wird automatisch erzeugt
+
+# --- Optionaler Fallback: Claude-API-Key ------------------------------------
+# Normalerweise bequemer direkt im Reiter "Einstellungen" hinterlegen
+# (siehe README, Abschnitt KI-Anbindung).
+# ANTHROPIC_API_KEY=sk-ant-hier-eigenen-key-eintragen
+
+# --- Optionaler Fallback: GitHub-Zugriffstoken (nur bei privatem Repo) ------
+# Nur nötig, falls das Repository https://github.com/GunnarGillert/Maler_Luft
+# irgendwann auf privat gestellt wird - Update.ps1 nutzt diesen Token dann
+# automatisch für den Download.
+# GITHUB_TOKEN=

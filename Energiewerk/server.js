@@ -23,6 +23,12 @@ const path = require("path");
 const crypto = require("crypto");
 
 const app = express();
+
+// Server steht evtl. hinter einem Reverse Proxy (Caddy/nginx für HTTPS) -
+// dann muss die echte Client-IP korrekt erkannt werden. TRUST_PROXY=1 in
+// der .env setzen, falls genutzt (siehe Caddyfile.beispiel).
+if (process.env.TRUST_PROXY === "1") app.set("trust proxy", 1);
+
 app.use(express.json({ limit: "5mb" }));
 
 const PORT = process.env.PORT || 4000;
@@ -791,9 +797,42 @@ app.use(express.static(path.join(__dirname, "public"), {
   },
 }));
 
+// HTTPS lässt sich auf zwei Arten einrichten (wie bei Parkwerk/Farbwerk):
+//  - HTTPS_CERT_PATH/HTTPS_KEY_PATH (PEM-Dateien) - typisch bei einem
+//    "echten", auf einen Domainnamen ausgestellten Zertifikat (z. B. von
+//    Let's Encrypt/certbot).
+//  - HTTPS_PFX_PATH/HTTPS_PFX_PASSPHRASE (eine .pfx-Datei) - wird von
+//    Install.ps1 automatisch erzeugt, wenn bei der Installation "HTTPS-
+//    Zertifikat jetzt erstellen?" mit Ja beantwortet wird.
+// Ohne eine der beiden läuft der Server per HTTP - dann sollte ein Reverse
+// Proxy wie Caddy davor für HTTPS sorgen (siehe Caddyfile.beispiel).
+let httpsOptionen = null;
+if (process.env.HTTPS_CERT_PATH && process.env.HTTPS_KEY_PATH) {
+  httpsOptionen = {
+    cert: fs.readFileSync(process.env.HTTPS_CERT_PATH),
+    key: fs.readFileSync(process.env.HTTPS_KEY_PATH),
+  };
+} else if (process.env.HTTPS_PFX_PATH) {
+  httpsOptionen = {
+    pfx: fs.readFileSync(process.env.HTTPS_PFX_PATH),
+    passphrase: process.env.HTTPS_PFX_PASSPHRASE || "",
+  };
+}
+
 seedFallsLeer()
   .then(() => {
-    app.listen(PORT, () => console.log(`Energiewerk-Prototyp läuft auf http://localhost:${PORT}`));
+    if (httpsOptionen) {
+      const https = require("https");
+      https.createServer(httpsOptionen, app).listen(PORT, () => {
+        console.log(`\nEnergiewerk läuft (HTTPS): https://localhost:${PORT}`);
+        console.log(`Daten liegen in: ${DATA_DIR}\n`);
+      });
+    } else {
+      app.listen(PORT, () => {
+        console.log(`\nEnergiewerk läuft: http://localhost:${PORT}`);
+        console.log(`Daten liegen in: ${DATA_DIR}\n`);
+      });
+    }
   })
   .catch((fehler) => {
     console.error("Fehler beim Anlegen der Beispieldaten:", fehler);

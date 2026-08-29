@@ -1,0 +1,42 @@
+# Beispiel-Konfiguration für Caddy (https://caddyserver.com) als Reverse
+# Proxy vor Energiewerk - empfohlener Weg für Internet-Zugriff, weil Caddy
+# sich automatisch und kostenlos um ein gültiges HTTPS-Zertifikat kümmert
+# (Let's Encrypt) und es sich erneuert, ohne dass ihr euch darum kümmern
+# müsst.
+#
+# WICHTIG: Port 443 kann immer nur von einem Programm gleichzeitig benutzt
+# werden. Wenn ihr Caddy als Reverse Proxy nutzt (dieses Beispiel), muss
+# Energiewerk selbst auf einem ANDEREN Port laufen, z. B. PORT=4020 in der
+# .env von Energiewerk - Caddy belegt dann 443 nach außen und reicht die
+# Anfragen intern an Energiewerk auf Port 4020 weiter. Läuft auf demselben
+# Server auch Parkwerk und/oder Farbwerk (gleicher Aufbau), braucht jedes
+# Programm einen eigenen internen Port (z. B. Parkwerk 4000, Farbwerk 3000,
+# Energiewerk 4020) - entsprechend unten mehrere Adress-Blöcke ergänzen.
+# Läuft Energiewerk dagegen direkt mit eigenem Zertifikat auf Port 443
+# (HTTPS_CERT_PATH/HTTPS_KEY_PATH in der .env, siehe README), wird
+# überhaupt kein Caddy/Reverse-Proxy benötigt - dann diese Datei ignorieren.
+#
+# Einrichtung (Windows-Server), falls ihr euch für Caddy entscheidet:
+#   1. Caddy von https://caddyserver.com/download herunterladen
+#      (caddy_windows_amd64.exe reicht, keine Installation nötig).
+#   2. Diese Datei nach "Caddyfile" (ohne Endung) neben die caddy.exe legen
+#      und die Domain unten anpassen.
+#   3. Windows-Firewall: Port 443 (HTTPS) und 80 (für die Zertifikatsprüfung
+#      durch Let's Encrypt) für eingehende Verbindungen freigeben.
+#   4. Domain: ein DNS-A-Eintrag muss auf die öffentliche IP dieses Servers
+#      zeigen, damit Let's Encrypt das Zertifikat ausstellen kann.
+#   5. Caddy als Windows-Dienst einrichten (z. B. ebenfalls mit NSSM, siehe
+#      Energiewerk selbst) oder testweise per "caddy run" in einer Konsole
+#      starten.
+#   6. Energiewerk läuft weiterhin ganz normal über Start-Hidden.vbs bzw.
+#      als eigener Windows-Dienst (Service-Install.bat) auf Port 4020 (nur
+#      innerhalb des Servers/LAN erreichbar) - Caddy reicht die Anfragen von
+#      außen an diesen internen Port durch.
+#
+# In der .env von Energiewerk zusätzlich setzen:
+#   TRUST_PROXY=1
+# (damit die echte Besucher-IP korrekt erkannt wird.)
+
+energiewerk.eure-domain.de {
+    reverse_proxy localhost:4020
+}
