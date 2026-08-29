@@ -166,6 +166,34 @@ Behoben: `Start.ps1` erzwingt jetzt zu Beginn `chcp 65001` sowie
 UTF-8 als Konsolen-Ausgabekodierung, bevor überhaupt ein `npm`-Befehl
 läuft.
 
+**Server-seitiges Logging grundlegend nachgezogen** (Auslöser: genau die
+beiden obigen Debugging-Runden zeigten, dass `debug.log` bis dahin viel zu
+wenig hergab). Vorher protokollierte der Server praktisch nichts außer
+einzelnen KI-/OCR-Ereignissen; ein Fehler in einer normalen API-Anfrage
+(z. B. eine beschädigte JSON-Datei im Datenordner - real möglich bei einem
+geteilten OneDrive-Ordner mit unterbrochenem Schreibvorgang oder
+Sync-Konflikt) hätte die Anfrage außerdem einfach **lautlos hängen
+lassen**, da Express 4 einen Fehler in einem `async`-Routen-Handler nicht
+automatisch an die Fehlerbehandlung weiterreicht. Jetzt:
+
+- **Jede Anfrage** wird mit Methode, Pfad, Status und Dauer in `debug.log`
+  protokolliert (`[request] GET /api/vorgaenge -> 200 (4ms)`).
+- **`express-async-errors`** sorgt dafür, dass ein Fehler in jedem
+  Routen-Handler tatsächlich bei der Fehlerbehandlung ankommt, statt die
+  Anfrage hängen zu lassen.
+- Ein Fehler dort landet **mit vollständigem Stacktrace** in `debug.log`
+  und die Anfrage bekommt sofort eine saubere `500`-JSON-Antwort statt
+  gar keiner Antwort.
+- Beim Start protokolliert der Server einmalig seine aufgelöste
+  Konfiguration (Node-Version, Plattform, Port, HTTPS an/aus, `DATA_DIR`,
+  ob ein `ANTHROPIC_API_KEY` aus der `.env` gefunden wurde).
+- `uncaughtException`/`unhandledRejection` (siehe OCR-Sicherheitsnetz
+  oben) loggen jetzt den vollen Stacktrace statt nur der Fehlermeldung.
+
+Mit einer absichtlich beschädigten JSON-Datei im Datenordner end-to-end
+verifiziert: Anfrage kommt sofort mit `500` zurück (statt zu hängen), voller
+Stacktrace erscheint in `debug.log`.
+
 ## Warum
 
 Das Fördergeschäft ist operativ klar, aber technologisch fragmentiert:

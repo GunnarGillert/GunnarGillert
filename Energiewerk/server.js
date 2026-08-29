@@ -14,6 +14,12 @@
 
 require("dotenv").config();
 const express = require("express");
+// Patcht express.Router (siehe unten app.get/post/patch), damit ein Fehler
+// in einem async-Routen-Handler automatisch bei der Fehler-Middleware
+// landet, statt die Anfrage lautlos haengen zu lassen - Express 4 tut das
+// von sich aus NICHT (anders als Express 5). Muss nach express, aber vor
+// den Routen-Definitionen eingebunden werden.
+require("express-async-errors");
 const multer = require("multer");
 const { PDFParse } = require("pdf-parse");
 const { createWorker } = require("tesseract.js");
@@ -30,6 +36,19 @@ const app = express();
 if (process.env.TRUST_PROXY === "1") app.set("trust proxy", 1);
 
 app.use(express.json({ limit: "5mb" }));
+
+// Protokolliert jede Anfrage (Methode, Pfad, Status, Dauer) in debug.log -
+// damit sich ein gemeldetes Problem nachvollziehen lässt, ohne dass jemand
+// die Browser-Entwicklerkonsole öffnen oder den Netzwerk-Tab mitschneiden
+// muss. Läuft VOR den Routen, protokolliert aber erst nach der Antwort
+// (über den "finish"-Event), damit Status und Dauer feststehen.
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    debugLog("request", `${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - start}ms)`);
+  });
+  next();
+});
 
 const PORT = process.env.PORT || 4000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "Energiewerk-Daten");
@@ -56,11 +75,11 @@ for (const dir of [DATA_DIR, COLLECTIONS_DIR, FENSTERBAUER_DIR, KUNDEN_DIR, VORG
 // Problem und derselbe Fix wie bei Parkwerk.
 process.on("uncaughtException", (fehler) => {
   console.error("Unerwarteter Fehler (Server läuft weiter):", fehler);
-  fs.appendFile(DEBUG_LOG_PATH, `${new Date().toISOString()} [uncaughtException] ${fehler.message}\n`, () => {});
+  debugLog("uncaughtException", fehler.stack || fehler.message);
 });
 process.on("unhandledRejection", (fehler) => {
   console.error("Unerwartete abgelehnte Promise (Server läuft weiter):", fehler);
-  fs.appendFile(DEBUG_LOG_PATH, `${new Date().toISOString()} [unhandledRejection] ${fehler?.message || fehler}\n`, () => {});
+  debugLog("unhandledRejection", fehler?.stack || fehler?.message || String(fehler));
 });
 
 function debugLog(bereich, nachricht) {
@@ -779,11 +798,19 @@ app.get("/api/dashboard", async (req, res) => {
   });
 });
 
+// Zentrale Fehler-Middleware - fängt sowohl synchrone Fehler als auch
+// (dank express-async-errors oben) Fehler aus async-Routen-Handlern ab.
+// Ohne diese Middleware würde ein unerwarteter Fehler in einer Route nur
+// Express' generische HTML-Fehlerseite ohne jedes Protokoll erzeugen -
+// genau die Art von "stille Anfrage, keine Erklärung", die zuletzt beim
+// Windows-Test schon beim Start selbst für Verwirrung gesorgt hat.
 app.use((fehler, req, res, next) => {
   if (fehler instanceof multer.MulterError) {
     return res.status(400).json({ fehler: `Upload fehlgeschlagen: ${fehler.message}` });
   }
-  next(fehler);
+  debugLog("fehler", `${req.method} ${req.originalUrl} -> ${fehler.stack || fehler.message}`);
+  if (res.headersSent) return next(fehler);
+  res.status(500).json({ fehler: "Interner Serverfehler. Details stehen im Protokoll (logs/debug.log)." });
 });
 
 // ----------------------------------------------------------------------------
@@ -842,6 +869,9 @@ function behandleListenFehler(fehler) {
   }
   process.exit(1);
 }
+
+debugLog("start", `Energiewerk startet - Node ${process.version} auf ${process.platform}, PORT=${PORT}, ` +
+  `HTTPS=${httpsOptionen ? "ja" : "nein"}, DATA_DIR=${DATA_DIR}, ANTHROPIC_API_KEY (.env)=${process.env.ANTHROPIC_API_KEY ? "gesetzt" : "nicht gesetzt"}`);
 
 seedFallsLeer()
   .then(() => {
