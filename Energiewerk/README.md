@@ -136,6 +136,23 @@ in der `.env` setzen.
 > dem produktiven Einsatz unbedingt einmal auf einem echten Windows-Server
 > durchspielen.
 
+**Beim ersten echten Windows-Test bestätigt:** Der Start schlug mit
+Exit-Code 1 fehl, ohne dass die eigentliche Ursache irgendwo sichtbar war
+– `Start.ps1` protokollierte bis dahin nur „npm start beendet, Exit-Code
+1", die tatsächliche Node-Fehlermeldung (z. B. `listen EADDRINUSE`, wenn
+Port 443 schon von IIS/einem anderen Programm belegt ist – genau das im
+README als offene Frage benannte Risiko) landete nur im unsichtbaren
+Konsolenfenster von `Start-Hidden.vbs` und ging damit verloren. Behoben:
+`Start.ps1` protokolliert `npm start` jetzt vollständig mit (wie schon
+`npm install`/`npm run build`) und erkennt `EADDRINUSE`/`EACCES` im
+Protokoll für eine konkrete Fehlermeldung statt nur „Exit-Code 1";
+`server.js` selbst gibt bei einem Listen-Fehler jetzt ebenfalls eine
+klare, auf Windows zugeschnittene Handlungsanweisung aus (Port prüfen mit
+`netstat -ano | findstr :443`, alternativ `PORT` in der `.env` ändern)
+statt nur den rohen Node-Stacktrace. Die zugrunde liegende Frage, *ob*
+Port 443 auf dem jeweiligen Windows-Rechner frei ist, bleibt weiterhin
+pro Maschine zu prüfen – das lässt sich nicht pauschal beheben.
+
 ## Warum
 
 Das Fördergeschäft ist operativ klar, aber technologisch fragmentiert:

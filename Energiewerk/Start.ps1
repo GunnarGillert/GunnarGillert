@@ -165,14 +165,47 @@ $url = "${protokoll}://${host_}$portTeil"
 
 Start-Process $url
 
-npm start
+# WICHTIG: npm start wird - anders als vorher - jetzt ebenfalls mitprotokolliert
+# (wie schon npm install/npm run build oben). Vorher landete die eigentliche
+# Fehlermeldung von Node bei einem Absturz (z. B. "listen EADDRINUSE") NUR im
+# unsichtbaren Konsolenfenster von Start-Hidden.vbs und nirgends sonst - im
+# Protokoll stand dann nur "Exit-Code 1" ohne jede Erklaerung.
+npm start 2>&1 | Tee-Object -FilePath $LogFile -Append | Out-Host
 $exitCode = $LASTEXITCODE
 Log "npm start beendet, Exit-Code $exitCode"
 
 if ($exitCode -ne 0) {
-    Fehlerblock "Energiewerk wurde unerwartet beendet." @(
-        "Moeglicherweise laeuft bereits eine andere Instanz (Port $port",
-        "schon belegt), oder ein anderer Fehler ist aufgetreten.",
-        "Details stehen im Protokoll."
-    )
+    $protokollText = Get-Content $LogFile -Raw
+    $portBelegt = $protokollText -match "EADDRINUSE"
+    $keineBerechtigung = $protokollText -match "EACCES"
+
+    if ($portBelegt) {
+        Fehlerblock "Port $port ist bereits belegt." @(
+            "Ein anderes Programm nutzt bereits Port $port (z. B. IIS/die",
+            "'World Wide Web Publishing Service', ein anderer lokaler Webserver,",
+            "oder eine zweite Energiewerk-Instanz).",
+            "",
+            "Pruefen, was den Port belegt: in einer Eingabeaufforderung",
+            "  netstat -ano | findstr :$port",
+            "eingeben und die dort angezeigte PID im Task-Manager nachschlagen.",
+            "",
+            "Alternativ in der .env einen anderen Port eintragen (z. B. PORT=4020)",
+            "und danach Energiewerk ueber den Browser mit Portangabe aufrufen."
+        )
+    } elseif ($keineBerechtigung) {
+        Fehlerblock "Keine Berechtigung fuer Port $port." @(
+            "Windows hat den Zugriff auf Port $port verweigert.",
+            "Pruefen, ob der Port reserviert ist:",
+            "  netsh http show urlacl",
+            "  netsh int ipv4 show excludedportrange protocol=tcp",
+            "",
+            "Alternativ in der .env einen anderen Port eintragen (z. B. PORT=4020)."
+        )
+    } else {
+        Fehlerblock "Energiewerk wurde unerwartet beendet." @(
+            "Moeglicherweise laeuft bereits eine andere Instanz, oder ein",
+            "anderer Fehler ist aufgetreten. Die genaue Fehlermeldung steht",
+            "im Protokoll direkt oberhalb dieser Meldung."
+        )
+    }
 }

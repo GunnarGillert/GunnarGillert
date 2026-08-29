@@ -819,19 +819,45 @@ if (process.env.HTTPS_CERT_PATH && process.env.HTTPS_KEY_PATH) {
   };
 }
 
+// Gibt bei "listen EADDRINUSE"/"listen EACCES" eine konkrete, auf Windows
+// zugeschnittene Handlungsanweisung aus statt nur den rohen Node-Fehler -
+// das war beim ersten echten Windows-Test genau die Stelle, an der
+// Energiewerk kommentarlos mit Exit-Code 1 abgebrochen ist (Start.ps1
+// protokollierte bis dahin nur "Exit-Code 1", ohne die eigentliche
+// Fehlermeldung - siehe Start.ps1 für den zugehörigen Logging-Fix).
+function behandleListenFehler(fehler) {
+  if (fehler.code === "EADDRINUSE") {
+    console.error(`\nFEHLER: Port ${PORT} ist bereits belegt.`);
+    console.error(`Ein anderes Programm nutzt Port ${PORT} bereits (z. B. IIS, ein anderer`);
+    console.error(`lokaler Webserver, oder eine zweite Energiewerk-Instanz).`);
+    console.error(`Prüfen mit: netstat -ano | findstr :${PORT}`);
+    console.error(`Alternativ in der .env einen anderen Port eintragen (z. B. PORT=4020).\n`);
+  } else if (fehler.code === "EACCES") {
+    console.error(`\nFEHLER: Keine Berechtigung für Port ${PORT}.`);
+    console.error(`Prüfen, ob der Port reserviert ist: netsh http show urlacl`);
+    console.error(`bzw.: netsh int ipv4 show excludedportrange protocol=tcp`);
+    console.error(`Alternativ in der .env einen anderen Port eintragen (z. B. PORT=4020).\n`);
+  } else {
+    console.error(`\nFEHLER beim Starten des Servers: ${fehler.message}\n`);
+  }
+  process.exit(1);
+}
+
 seedFallsLeer()
   .then(() => {
     if (httpsOptionen) {
       const https = require("https");
-      https.createServer(httpsOptionen, app).listen(PORT, () => {
-        console.log(`\nEnergiewerk läuft (HTTPS): https://localhost:${PORT}`);
-        console.log(`Daten liegen in: ${DATA_DIR}\n`);
-      });
+      https.createServer(httpsOptionen, app)
+        .on("error", behandleListenFehler)
+        .listen(PORT, () => {
+          console.log(`\nEnergiewerk läuft (HTTPS): https://localhost:${PORT}`);
+          console.log(`Daten liegen in: ${DATA_DIR}\n`);
+        });
     } else {
       app.listen(PORT, () => {
         console.log(`\nEnergiewerk läuft: http://localhost:${PORT}`);
         console.log(`Daten liegen in: ${DATA_DIR}\n`);
-      });
+      }).on("error", behandleListenFehler);
     }
   })
   .catch((fehler) => {
