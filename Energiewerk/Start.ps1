@@ -2,6 +2,17 @@ $ErrorActionPreference = "Stop"
 $InstallDir = $PSScriptRoot
 Set-Location $InstallDir
 
+# npm ist unter Windows ein .cmd-Batch-Wrapper (ruft intern cmd.exe auf) -
+# wird dessen Ausgabe wie unten per Tee-Object/Pipe erfasst, kann die
+# Konsolen-Codepage von der tatsaechlichen Textkodierung abweichen. Das
+# aeussert sich als "verstreute" Ausgabe mit einem Leerzeichen nach jedem
+# Buchstaben (z. B. "n o d e   s e r v e r . j s") - beim ersten echten
+# Windows-Test genau so aufgetreten. Behoben, indem die Konsole VOR jedem
+# npm-Aufruf auf UTF-8 gezwungen wird.
+chcp 65001 | Out-Null
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 Add-Type -AssemblyName System.Windows.Forms | Out-Null
 
 $LogDir = Join-Path $env:LOCALAPPDATA "Energiewerk"

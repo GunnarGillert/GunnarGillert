@@ -153,6 +153,19 @@ statt nur den rohen Node-Stacktrace. Die zugrunde liegende Frage, *ob*
 Port 443 auf dem jeweiligen Windows-Rechner frei ist, bleibt weiterhin
 pro Maschine zu prüfen – das lässt sich nicht pauschal beheben.
 
+**Ebenfalls beim ersten echten Windows-Test aufgefallen:** Die gerade neu
+protokollierte `npm start`-Ausgabe erschien "verstreut" mit einem
+Leerzeichen nach jedem Buchstaben (z. B. `n o d e   s e r v e r . j s`) -
+das klassische Symptom, wenn die Windows-Konsolen-Codepage nicht zur
+tatsächlichen Textkodierung passt, sobald die Ausgabe eines `.cmd`-Batch-
+Wrappers wie `npm.cmd` per Pipe/`Tee-Object` abgegriffen wird (bereits
+bei `npm install`/`npm run build` latent vorhanden, dort aber bisher nie
+aufgefallen, weil node_modules/bundle.js bei jedem bisherigen Testlauf
+schon vorhanden waren und diese Schritte deshalb übersprungen wurden).
+Behoben: `Start.ps1` erzwingt jetzt zu Beginn `chcp 65001` sowie
+UTF-8 als Konsolen-Ausgabekodierung, bevor überhaupt ein `npm`-Befehl
+läuft.
+
 ## Warum
 
 Das Fördergeschäft ist operativ klar, aber technologisch fragmentiert:
