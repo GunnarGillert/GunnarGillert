@@ -50,6 +50,42 @@ async function ladeJson(url, optionen) {
   return antwort.json();
 }
 
+// Datei-Upload per Klick (Standard-Dateiauswahl) ODER per Drag & Drop auf
+// dieselbe Fläche - beide Wege rufen denselben onDatei(datei)-Callback auf.
+function Dateiablage({ onDatei, hochladeLaeuft, accept }) {
+  const [ziehtUeber, setZiehtUeber] = useState(false);
+
+  function dateiUebernehmen(datei) {
+    if (!datei || hochladeLaeuft) return;
+    onDatei(datei);
+  }
+
+  return (
+    <div
+      className={`dropzone${ziehtUeber ? " aktiv" : ""}`}
+      onDragOver={(e) => { e.preventDefault(); setZiehtUeber(true); }}
+      onDragLeave={() => setZiehtUeber(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setZiehtUeber(false);
+        dateiUebernehmen(e.dataTransfer.files[0]);
+      }}
+    >
+      <input
+        type="file"
+        accept={accept}
+        disabled={hochladeLaeuft}
+        onChange={(e) => {
+          const datei = e.target.files[0];
+          e.target.value = "";
+          dateiUebernehmen(datei);
+        }}
+      />
+      <span className="dropzone-hinweis">oder Datei hierher ziehen</span>
+    </div>
+  );
+}
+
 // ----------------------------------------------------------------------------
 // Startseite
 // ----------------------------------------------------------------------------
@@ -184,9 +220,7 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen }) {
     laden();
   }
 
-  async function dateiHochladen(e) {
-    const datei = e.target.files[0];
-    e.target.value = "";
+  async function dateiHochladen(datei) {
     if (!datei) return;
     setHochladeFehler("");
     setHochladeLaeuft(true);
@@ -320,10 +354,8 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen }) {
           </div>
 
           <h3>Unterlagen</h3>
-          <div>
-            <input type="file" onChange={dateiHochladen} disabled={hochladeLaeuft} />
-            {hochladeLaeuft && <span> Wird hochgeladen und geprüft (Dateiname, ggf. Textebene/OCR + KI-Vorschlag) …</span>}
-          </div>
+          <Dateiablage onDatei={dateiHochladen} hochladeLaeuft={hochladeLaeuft} />
+          {hochladeLaeuft && <div className="leer">Wird hochgeladen und geprüft (Dateiname, ggf. Textebene/OCR + KI-Vorschlag) …</div>}
           {hochladeFehler && <div className="leer">Fehler: {hochladeFehler}</div>}
 
           {(ausgewaehlterVorgang.dokumente || []).length === 0 && (
@@ -639,9 +671,7 @@ function Einstellungen() {
 
   useEffect(() => { laden(); }, [laden]);
 
-  async function dateiHochladen(e) {
-    const datei = e.target.files[0];
-    e.target.value = "";
+  async function dateiHochladen(datei) {
     if (!datei) return;
     setHochladeFehler("");
     setHochladeLaeuft(true);
@@ -770,8 +800,8 @@ function Einstellungen() {
         )}
 
         <div style={{ marginTop: 10 }}>
-          <input type="file" accept="application/pdf" onChange={dateiHochladen} disabled={hochladeLaeuft} />
-          {hochladeLaeuft && <span> Wird hochgeladen und ausgelesen …</span>}
+          <Dateiablage onDatei={dateiHochladen} hochladeLaeuft={hochladeLaeuft} accept="application/pdf" />
+          {hochladeLaeuft && <div className="leer">Wird hochgeladen und ausgelesen …</div>}
         </div>
         {hochladeFehler && <div className="leer">Fehler: {hochladeFehler}</div>}
       </div>
