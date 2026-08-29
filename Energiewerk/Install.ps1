@@ -320,7 +320,11 @@ if ($bestehendesPfx) {
                 $verbindungsdaten = Get-Content $verbindungsdatenPfad -Raw | ConvertFrom-Json
                 if ($verbindungsdaten.name) {
                     $envZeilen = Get-Content $vorhandeneEnv
-                    $envZeilen = $envZeilen | Where-Object { $_ -notmatch '^\s*HTTPS_SERVER_NAME\s*=' }
+                    # @(...) erzwingt ein Array, auch wenn nur eine Zeile übrig bleibt -
+                    # sonst macht PowerShell aus dem Where-Object-Ergebnis eine einzelne
+                    # Zeichenkette, und "+=" haengt dann OHNE Zeilenumbruch an (siehe
+                    # ausführlicher Kommentar beim identischen Muster weiter unten).
+                    $envZeilen = @($envZeilen | Where-Object { $_ -notmatch '^\s*HTTPS_SERVER_NAME\s*=' })
                     $envZeilen += "HTTPS_SERVER_NAME=$($verbindungsdaten.name)"
                     Set-Content -Path $vorhandeneEnv -Value $envZeilen
                     Write-Host "HTTPS_SERVER_NAME nachgetragen: $($verbindungsdaten.name) (aus verbindungsdaten.json)." -ForegroundColor Green
@@ -392,7 +396,18 @@ if ($httpsEinrichten -eq "j" -or $httpsEinrichten -eq "J") {
         # ist auf $serverName/$serverIp ausgestellt, NICHT auf "localhost" -
         # https://localhost wuerde daher immer einen Zertifikatsfehler zeigen).
         $envZeilen = Get-Content $vorhandeneEnv
-        $envZeilen = $envZeilen | Where-Object { $_ -notmatch '^\s*PORT\s*=' -and $_ -notmatch '^\s*HTTPS_(CERT|KEY|PFX|SERVER_NAME)' }
+        # @(...) erzwingt ein Array, auch wenn nur eine Zeile uebrig bleibt (z. B.
+        # bei einer frischen Installation, wo die .env bis hierhin nur DATA_DIR
+        # enthaelt und die PORT-Zeile herausgefiltert wird): Ohne das macht
+        # PowerShell aus einem einzeiligen Where-Object-Ergebnis automatisch eine
+        # einzelne Zeichenkette statt eines 1-Element-Arrays - und "+=" haengt bei
+        # einer Zeichenkette den Text dann OHNE Zeilenumbruch direkt an ("string
+        # concatenation" statt "array append"). Genau das hat beim ersten echten
+        # Windows-Test die .env auf eine einzige, zusammengeklebte Zeile zusammen-
+        # gequetscht ("...Energiewerk-DatenPORT=443HTTPS_PFX_PATH=...") und den
+        # Start mit "ENOENT: no such file or directory, mkdir '...'" zum Absturz
+        # gebracht.
+        $envZeilen = @($envZeilen | Where-Object { $_ -notmatch '^\s*PORT\s*=' -and $_ -notmatch '^\s*HTTPS_(CERT|KEY|PFX|SERVER_NAME)' })
         $envZeilen += "PORT=443"
         $envZeilen += "HTTPS_PFX_PATH=$pfxPfad"
         $envZeilen += "HTTPS_PFX_PASSPHRASE=$pfxPasswort"
