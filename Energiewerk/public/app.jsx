@@ -529,6 +529,8 @@ function Fensterbauerverwaltung() {
   const [suche, setSuche] = useState("");
   const [liste, setListe] = useState([]);
   const [ausgewaehlt, setAusgewaehlt] = useState(null);
+  const [bearbeitung, setBearbeitung] = useState(null);
+  const [speichernStatus, setSpeichernStatus] = useState("");
   const [neu, setNeu] = useState({ ...LEERES_KONTAKT_FORMULAR, kuerzel: "" });
 
   const laden = useCallback(() => {
@@ -542,6 +544,9 @@ function Fensterbauerverwaltung() {
   async function oeffne(id) {
     const f = await ladeJson(`/api/fensterbauer/${id}`);
     setAusgewaehlt(f);
+    const { vorname, nachname, firma, kuerzel, strasse, plz, ort, telefon, email, bemerkungen, aktiv } = f;
+    setBearbeitung({ vorname, nachname, firma, kuerzel, strasse, plz, ort, telefon, email, bemerkungen, aktiv });
+    setSpeichernStatus("");
   }
 
   async function anlegen(e) {
@@ -558,6 +563,28 @@ function Fensterbauerverwaltung() {
 
   function feldAendern(feld) {
     return (e) => setNeu((vorher) => ({ ...vorher, [feld]: e.target.value }));
+  }
+
+  function bearbeitungsFeldAendern(feld) {
+    return (e) => setBearbeitung((vorher) => ({ ...vorher, [feld]: e.target.value }));
+  }
+
+  async function speichern(e) {
+    e.preventDefault();
+    if (!bearbeitung.firma || !bearbeitung.kuerzel) return;
+    setSpeichernStatus("Speichert …");
+    try {
+      const aktualisiert = await ladeJson(`/api/fensterbauer/${ausgewaehlt.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bearbeitung),
+      });
+      setAusgewaehlt((vorher) => ({ ...vorher, ...aktualisiert }));
+      setSpeichernStatus("Gespeichert.");
+      laden();
+    } catch (fehler) {
+      setSpeichernStatus(`Fehler: ${fehler.message}`);
+    }
   }
 
   return (
@@ -602,21 +629,34 @@ function Fensterbauerverwaltung() {
         </tbody>
       </table>
 
-      {ausgewaehlt && (
+      {ausgewaehlt && bearbeitung && (
         <div className="karte-panel">
           <button className="schliessen" onClick={() => setAusgewaehlt(null)}>Schließen ✕</button>
           <h3>{ausgewaehlt.firma} <span style={{ fontWeight: 400, fontSize: 13, color: "#5c6b66" }}>({ausgewaehlt.kuerzel})</span></h3>
-          <div className="feld-zeile">
-            <div className="feld"><div className="label">Ansprechpartner</div>{ausgewaehlt.vorname} {ausgewaehlt.nachname}</div>
-            <div className="feld"><div className="label">Adresse</div>{ausgewaehlt.strasse}, {ausgewaehlt.plz} {ausgewaehlt.ort}</div>
-            <div className="feld"><div className="label">Telefon</div>{ausgewaehlt.telefon}</div>
-            <div className="feld"><div className="label">E-Mail (To/CC)</div>{ausgewaehlt.email}</div>
-          </div>
-          {ausgewaehlt.bemerkungen && (
-            <div className="feld-zeile">
-              <div className="feld"><div className="label">Bemerkungen</div>{ausgewaehlt.bemerkungen}</div>
-            </div>
-          )}
+
+          <form className="form-neu" onSubmit={speichern}>
+            <input type="text" placeholder="Firma" value={bearbeitung.firma} onChange={bearbeitungsFeldAendern("firma")} />
+            <input type="text" placeholder="Kürzel" value={bearbeitung.kuerzel} onChange={bearbeitungsFeldAendern("kuerzel")} />
+            <input type="text" placeholder="Vorname (Ansprechpartner)" value={bearbeitung.vorname} onChange={bearbeitungsFeldAendern("vorname")} />
+            <input type="text" placeholder="Name (Ansprechpartner)" value={bearbeitung.nachname} onChange={bearbeitungsFeldAendern("nachname")} />
+            <input type="text" placeholder="Straße" value={bearbeitung.strasse} onChange={bearbeitungsFeldAendern("strasse")} />
+            <input type="text" placeholder="PLZ" value={bearbeitung.plz} onChange={bearbeitungsFeldAendern("plz")} />
+            <input type="text" placeholder="Ort" value={bearbeitung.ort} onChange={bearbeitungsFeldAendern("ort")} />
+            <input type="text" placeholder="Telefonnummer" value={bearbeitung.telefon} onChange={bearbeitungsFeldAendern("telefon")} />
+            <input type="text" placeholder="E-Mail (To/CC)" value={bearbeitung.email} onChange={bearbeitungsFeldAendern("email")} />
+            <input type="text" placeholder="Bemerkungen" value={bearbeitung.bemerkungen} onChange={bearbeitungsFeldAendern("bemerkungen")} />
+            <label className="filter">
+              <input
+                type="checkbox"
+                checked={bearbeitung.aktiv}
+                onChange={(e) => setBearbeitung((vorher) => ({ ...vorher, aktiv: e.target.checked }))}
+              />
+              Aktiv
+            </label>
+            <button className="aktion" type="submit">Speichern</button>
+          </form>
+          {speichernStatus && <div className="leer">{speichernStatus}</div>}
+
           <h3>Zugeordnete Kunden ({ausgewaehlt.kunden.length})</h3>
           {ausgewaehlt.kunden.map((k) => (
             <div className="historie-eintrag" key={k.id}>{k.vorname} {k.nachname}</div>

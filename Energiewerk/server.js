@@ -564,6 +564,27 @@ app.post("/api/fensterbauer", async (req, res) => {
   res.status(201).json(f);
 });
 
+app.patch("/api/fensterbauer/:id", async (req, res) => {
+  const f = await leseEins(FENSTERBAUER_DIR, req.params.id);
+  if (!f) return res.status(404).json({ fehler: "Fensterbauer nicht gefunden." });
+  const { vorname, nachname, firma, kuerzel, strasse, plz, ort, telefon, email, bemerkungen, aktiv } = req.body;
+  if (firma !== undefined && !firma) return res.status(400).json({ fehler: "Firma darf nicht leer sein." });
+  if (kuerzel !== undefined && !kuerzel) return res.status(400).json({ fehler: "Kürzel darf nicht leer sein." });
+  if (firma !== undefined) f.firma = firma;
+  if (kuerzel !== undefined) f.kuerzel = kuerzel;
+  if (vorname !== undefined) f.vorname = vorname;
+  if (nachname !== undefined) f.nachname = nachname;
+  if (strasse !== undefined) f.strasse = strasse;
+  if (plz !== undefined) f.plz = plz;
+  if (ort !== undefined) f.ort = ort;
+  if (telefon !== undefined) f.telefon = telefon;
+  if (email !== undefined) f.email = email;
+  if (bemerkungen !== undefined) f.bemerkungen = bemerkungen;
+  if (aktiv !== undefined) f.aktiv = Boolean(aktiv);
+  await schreibe(FENSTERBAUER_DIR, f.id, f);
+  res.json(f);
+});
+
 // ----------------------------------------------------------------------------
 // API: Kunden
 // ----------------------------------------------------------------------------
