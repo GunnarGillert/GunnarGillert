@@ -431,7 +431,18 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen, startVorgangId,
                 <div className="feld"><div className="label">Begründung</div>{ausgewaehlterVorgang.uWertPruefung.begruendung}</div>
               )}
               {ausgewaehlterVorgang.uWertPruefung.gefundeneUWerte?.length > 0 && (
-                <div className="feld"><div className="label">Gefundene U-Werte</div>{ausgewaehlterVorgang.uWertPruefung.gefundeneUWerte.join(", ")}</div>
+                <div className="feld">
+                  <div className="label">
+                    {ausgewaehlterVorgang.uWertPruefung.gefundeneUWerte.length === 1 ? "Gefundener U-Wert" : "Gefundene U-Werte"}
+                  </div>
+                  {ausgewaehlterVorgang.uWertPruefung.gefundeneUWerte.length === 1 ? (
+                    ausgewaehlterVorgang.uWertPruefung.gefundeneUWerte[0]
+                  ) : (
+                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                      {ausgewaehlterVorgang.uWertPruefung.gefundeneUWerte.map((wert, i) => <li key={i}>{wert}</li>)}
+                    </ul>
+                  )}
+                </div>
               )}
               {ausgewaehlterVorgang.uWertPruefung.fehler && (
                 <div className="feld"><div className="label">Hinweis</div>{ausgewaehlterVorgang.uWertPruefung.fehler}</div>

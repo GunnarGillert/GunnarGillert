@@ -476,8 +476,11 @@ async function fuehreUWertPruefungDurch(v, dokument) {
     // Historie nachvollziehen lässt - die "U-Wert-Prüfung"-Box am Vorgang
     // zeigt ja immer nur den zuletzt gespeicherten Stand.
     const einzelheiten = [`Ergebnis "${pruefung.ergebnis}"`];
-    if (pruefung.gefundeneUWerte.length > 0) {
-      einzelheiten.push(`gefundene U-Werte: ${pruefung.gefundeneUWerte.join(", ")}`);
+    if (pruefung.gefundeneUWerte.length === 1) {
+      einzelheiten.push(`gefundener U-Wert: ${pruefung.gefundeneUWerte[0]}`);
+    } else if (pruefung.gefundeneUWerte.length > 1) {
+      const aufzaehlung = pruefung.gefundeneUWerte.map((wert, i) => `${i + 1}. ${wert}`).join("; ");
+      einzelheiten.push(`gefundene U-Werte: ${aufzaehlung}`);
     }
     if (pruefung.begruendung) {
       einzelheiten.push(`Begründung: ${pruefung.begruendung}`);
