@@ -255,6 +255,27 @@ die Verknüpfung/`Start.bat`), bleibt das Verhalten unverändert.
 aktuelle Server-Code läuft – ab dem nächsten Update greift die Behebung
 automatisch.
 
+**`Update.bat`/`Install.bat` scheinen bei „Programmbausteine werden
+installiert" (bzw. „… aktualisieren") stehenzubleiben:** `npm install` hat
+keinen eigenen Timeout – ein sich drehender Fortschritts-Spinner ganz ohne
+weitere Textzeile ist normal und für sich genommen **kein** Zeichen eines
+echten Hängers, auch wenn das mehrere Minuten so aussieht. Häufigste Ursache
+auf Windows-Servern: ein **Antivirus-Echtzeitscan** (z. B. Windows Defender)
+scannt dabei jede der oft zehntausenden kleinen Dateien in `node_modules`
+einzeln mit, was einen eigentlich schnellen Durchlauf leicht auf 5–15+
+Minuten strecken kann – selbst wenn sich inhaltlich gar nichts ändert.
+Prüfen: Task-Manager öffnen, Reiter „Details", `node.exe`/`npm` heraussuchen
+– zeigt der Prozess noch CPU- oder Festplattenaktivität (auch nur
+gelegentlich), läuft er nur langsam, kein Grund zum Abbrechen. Erst wenn
+CPU **und** Festplatte über mehrere Minuten durchgehend bei 0 % stehen, ist
+es ein echter Hänger. Abhilfe/Beschleunigung: eine Antivirus-Ausnahme für
+`C:\Program Files\Energiewerk` (und ggf. den npm-Cache-Ordner,
+`%AppData%\npm-cache`) eintragen – beschleunigt `npm install` auf
+Windows-Servern erfahrungsgemäß drastisch. `Install.ps1` gibt vor diesem
+Schritt inzwischen einen entsprechenden Hinweistext aus und ruft `npm
+install` mit `--no-audit --no-fund` auf (spart zwei für den Betrieb
+unnötige zusätzliche Netzwerk-Anfragen).
+
 ## Warum
 
 Das Fördergeschäft ist operativ klar, aber technologisch fragmentiert:

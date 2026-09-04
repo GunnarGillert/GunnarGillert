@@ -127,7 +127,19 @@ Set-Location $ZielOrdner
 #    Oberflaeche neu).
 # ---------------------------------------------------------------------------
 Abschnitt "Programmbausteine werden installiert"
-npm install
+# Kann - v. a. wenn ein Antivirus-Echtzeitscan (z. B. Windows Defender) jede
+# der oft zehntausenden kleinen Dateien in node_modules einzeln mitscannt -
+# mehrere Minuten dauern, OHNE dass etwas schiefgelaufen ist. npm install hat
+# dafuer keinen eigenen Timeout; der drehende Fortschritts-Spinner allein ist
+# normal und kein Zeichen eines Haengers. --no-audit/--no-fund sparen dabei
+# zumindest zwei zusaetzliche, fuer den Betrieb unnoetige Netzwerk-Anfragen.
+# Falls es wirklich haengt (Spinner UND Task-Manager-CPU/Platten-Aktivitaet
+# fuer node.exe/npm ueber laengere Zeit komplett bei 0 %): Fenster schliessen,
+# testweise eine Antivirus-Ausnahme fuer diesen Ordner eintragen, danach
+# Update.bat erneut ausfuehren - beschleunigt npm install auf Windows-Servern
+# erfahrungsgemaess drastisch (siehe README).
+Write-Host "Das kann - insbesondere bei aktivem Virenschutz - einige Minuten dauern ..." -ForegroundColor DarkGray
+npm install --no-audit --no-fund
 if ($LASTEXITCODE -ne 0) {
     Write-Host "npm install ist fehlgeschlagen." -ForegroundColor Red
     Read-Host "Enter zum Beenden druecken"
