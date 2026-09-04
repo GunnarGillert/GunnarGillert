@@ -123,6 +123,18 @@ OneDrive-Sync-Konflikte, weil nur noch ein Prozess schreibt.
 4. Danach ist Energiewerk unter `https://energiewerk/` ohne
    Browser-Warnung erreichbar.
 
+**Zusätzlich ganz ohne Zertifikat/Warnung per HTTP:** Ist HTTPS wie oben
+eingerichtet, läuft Energiewerk automatisch zusätzlich auf Port 80 per
+normalem HTTP (`http://energiewerk/`, `HTTP_PORT` in der `.env`, Standard
+`80`) – praktisch für ein rein internes LAN, wenn nicht jeder Client-Rechner
+das Zertifikat vorab eingerichtet haben muss/soll und man notfalls auch so
+reinkommen will. Der Datenverkehr läuft über diesen Port unverschlüsselt,
+also nur in einem vertrauenswürdigen LAN/VPN vertretbar – in einem Netz mit
+fremden Teilnehmern (z. B. offenes/Gäste-WLAN) `HTTP_PORT=0` in der `.env`
+setzen, um ihn abzuschalten. Ist Port 80 anderweitig belegt (z. B. IIS),
+meldet das Protokoll das lediglich als Hinweis – Energiewerk läuft dann
+trotzdem normal über HTTPS weiter.
+
 Mit eigener Domain stattdessen **Caddy als Reverse Proxy**
 (`Caddyfile.beispiel`) – kümmert sich automatisch um ein echtes
 Let's-Encrypt-Zertifikat; Energiewerk läuft dann intern auf einem anderen

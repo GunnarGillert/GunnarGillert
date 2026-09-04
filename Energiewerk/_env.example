@@ -45,6 +45,16 @@ PORT=443
 # HTTPS_PFX_PATH=C:\Program Files\Energiewerk\energiewerk-server.pfx
 # HTTPS_PFX_PASSPHRASE=wird automatisch erzeugt
 
+# Nur wirksam, wenn oben HTTPS aktiv ist (a oder b): Energiewerk läuft dann
+# ZUSÄTZLICH auf diesem Port ganz normal per HTTP (ohne Weiterleitung auf
+# HTTPS) - praktisch im internen LAN, wenn nicht jeder Client-Rechner das
+# selbstsignierte Zertifikat als vertrauenswürdig eingerichtet hat/haben
+# soll und man trotzdem ohne Zertifikatswarnung reinkommen will (einfach
+# http://<servername>/ statt https://<servername>/ aufrufen). Datenverkehr
+# über diesen Port läuft dabei unverschlüsselt - nur für ein vertrauens-
+# würdiges LAN/VPN vertretbar. Mit HTTP_PORT=0 abschaltbar.
+HTTP_PORT=80
+
 # --- Optionaler Fallback: Claude-API-Key ------------------------------------
 # Normalerweise bequemer direkt im Reiter "Einstellungen" hinterlegen
 # (siehe README, Abschnitt KI-Anbindung).

@@ -290,7 +290,8 @@ if ($serverModus -eq "j" -or $serverModus -eq "J") {
     Write-Host "Noch zu erledigen (nicht durch dieses Skript automatisiert):" -ForegroundColor Yellow
     Write-Host "  1. Windows-Autoanmeldung einrichten - siehe README.md, Abschnitt" -ForegroundColor Yellow
     Write-Host "     'Autoanmeldung einrichten (Windows 11)'." -ForegroundColor Yellow
-    Write-Host "  2. Firewall-Port freigeben (Standard 443) - siehe README.md." -ForegroundColor Yellow
+    Write-Host "  2. Firewall-Port(e) freigeben (Standard 443, bei HTTP_PORT zusaetzlich 80) -" -ForegroundColor Yellow
+    Write-Host "     siehe README.md." -ForegroundColor Yellow
 } else {
     Write-Host "Server-Modus (Autostart-Verknuepfung) uebersprungen - Energiewerk startet"
     Write-Host "weiterhin nur ueber die Desktop-Verknuepfung, wenn sich jemand aktiv"
@@ -482,6 +483,8 @@ if ($httpsEinrichten -eq "j" -or $httpsEinrichten -eq "J") {
         Write-Host "als Administrator ausfuehren." -ForegroundColor Green
         Write-Host ""
         Write-Host "Energiewerk ist danach unter https://$serverName/ erreichbar (nach einem Neustart)." -ForegroundColor Green
+        Write-Host "Zusaetzlich ganz ohne Zertifikatswarnung per http://$serverName/ (Port 80, siehe" -ForegroundColor Green
+        Write-Host "HTTP_PORT in der .env - nur fuer das interne LAN gedacht, unverschluesselt)." -ForegroundColor Green
     } catch {
         Write-Host ""
         Write-Host "Zertifikatserstellung fehlgeschlagen: $($_.Exception.Message)" -ForegroundColor Red

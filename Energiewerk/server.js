@@ -1058,6 +1058,16 @@ if (process.env.HTTPS_CERT_PATH && process.env.HTTPS_KEY_PATH) {
   };
 }
 
+// Zusätzlicher, unverschlüsselter HTTP-Port neben HTTPS: Der Server läuft
+// nur im internen LAN, das selbstsignierte Zertifikat lässt sich aber nicht
+// auf jedem Client-Rechner vorab als vertrauenswürdig einrichten - über
+// HTTP_PORT (Standard 80) kommt man dann testweise/ausnahmsweise auch ganz
+// ohne Zertifikatswarnung drauf (z. B. http://energiewerk/ statt
+// https://energiewerk/). Nur relevant, wenn HTTPS überhaupt aktiv ist -
+// ohne HTTPS läuft der Server ohnehin schon unverschlüsselt auf PORT.
+// Über HTTP_PORT=0 (oder leer) in der .env abschaltbar.
+const HTTP_PORT = process.env.HTTP_PORT !== undefined ? process.env.HTTP_PORT.trim() : "80";
+
 // Gibt bei "listen EADDRINUSE"/"listen EACCES" eine konkrete, auf Windows
 // zugeschnittene Handlungsanweisung aus statt nur den rohen Node-Fehler -
 // das war beim ersten echten Windows-Test genau die Stelle, an der
@@ -1083,7 +1093,8 @@ function behandleListenFehler(fehler) {
 }
 
 debugLog("start", `Energiewerk startet - Node ${process.version} auf ${process.platform}, PORT=${PORT}, ` +
-  `HTTPS=${httpsOptionen ? "ja" : "nein"}, DATA_DIR=${DATA_DIR}, ANTHROPIC_API_KEY (.env)=${process.env.ANTHROPIC_API_KEY ? "gesetzt" : "nicht gesetzt"}`);
+  `HTTPS=${httpsOptionen ? "ja" : "nein"}, HTTP_PORT=${httpsOptionen && HTTP_PORT && HTTP_PORT !== "0" ? HTTP_PORT : "aus"}, ` +
+  `DATA_DIR=${DATA_DIR}, ANTHROPIC_API_KEY (.env)=${process.env.ANTHROPIC_API_KEY ? "gesetzt" : "nicht gesetzt"}`);
 
 seedFallsLeer()
   .then(() => {
@@ -1095,6 +1106,26 @@ seedFallsLeer()
           console.log(`\nEnergiewerk läuft (HTTPS): https://localhost:${PORT}`);
           console.log(`Daten liegen in: ${DATA_DIR}\n`);
         });
+
+      // Zweiter, unverschlüsselter Listener auf HTTP_PORT (Standard 80) -
+      // bewusst OHNE Weiterleitung auf HTTPS, damit man im internen LAN
+      // testweise/ausnahmsweise auch ohne Zertifikatswarnung reinkommt.
+      // Scheitert dieser zusätzliche Port (z. B. weil 80 schon von IIS
+      // belegt ist oder fehlende Rechte), läuft Energiewerk trotzdem ganz
+      // normal über HTTPS weiter - anders als beim Hauptport oben führt
+      // das hier NICHT zum Abbruch (behandleListenFehler wird bewusst
+      // nicht verwendet).
+      if (HTTP_PORT && HTTP_PORT !== "0" && Number(HTTP_PORT) !== Number(PORT)) {
+        app.listen(Number(HTTP_PORT), () => {
+          console.log(`Energiewerk läuft zusätzlich unverschlüsselt (HTTP): http://localhost:${HTTP_PORT}`);
+        }).on("error", (fehler) => {
+          console.error(`\nHinweis: Zusätzlicher HTTP-Port ${HTTP_PORT} konnte nicht geöffnet werden (${fehler.code || fehler.message}).`);
+          console.error(`Energiewerk läuft trotzdem normal über HTTPS (Port ${PORT}) weiter.`);
+          console.error(`Prüfen mit: netstat -ano | findstr :${HTTP_PORT}`);
+          console.error(`Alternativ HTTP_PORT in der .env anpassen oder mit HTTP_PORT=0 abschalten.\n`);
+          debugLog("start", `Zusätzlicher HTTP_PORT ${HTTP_PORT} fehlgeschlagen: ${fehler.stack || fehler.message}`);
+        });
+      }
     } else {
       app.listen(PORT, () => {
         console.log(`\nEnergiewerk läuft: http://localhost:${PORT}`);
