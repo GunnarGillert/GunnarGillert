@@ -173,8 +173,12 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen }) {
   const [dokumenttypen, setDokumenttypen] = useState([]);
   const [hochladeLaeuft, setHochladeLaeuft] = useState(false);
   const [hochladeFehler, setHochladeFehler] = useState("");
+  const [kundenListe, setKundenListe] = useState([]);
+  const [neuerAuftrag, setNeuerAuftrag] = useState({ kundeId: "", bafaVorgangsId: "" });
+  const [anlegenFehler, setAnlegenFehler] = useState("");
 
   useEffect(() => { ladeJson("/api/dokumenttypen").then(setDokumenttypen).catch(() => {}); }, []);
+  useEffect(() => { ladeJson("/api/kunden").then(setKundenListe).catch(() => {}); }, []);
 
   useEffect(() => {
     if (!startFilter) return;
@@ -198,6 +202,29 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen }) {
   async function oeffneVorgang(id) {
     const v = await ladeJson(`/api/vorgaenge/${id}`);
     setAusgewaehlterVorgang(v);
+  }
+
+  async function auftragAnlegen(e) {
+    e.preventDefault();
+    const kunde = kundenListe.find((k) => k.id === neuerAuftrag.kundeId);
+    if (!kunde) return;
+    setAnlegenFehler("");
+    try {
+      const v = await ladeJson("/api/vorgaenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kundeId: kunde.id,
+          fensterbauerId: kunde.fensterbauerId,
+          bafaVorgangsId: neuerAuftrag.bafaVorgangsId,
+        }),
+      });
+      setNeuerAuftrag({ kundeId: "", bafaVorgangsId: "" });
+      laden();
+      await oeffneVorgang(v.id);
+    } catch (fehler) {
+      setAnlegenFehler(fehler.message);
+    }
   }
 
   async function aendereStatus(neuerStatus) {
@@ -270,6 +297,26 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen }) {
           Zahlung überfällig
         </label>
       </div>
+
+      <form className="form-neu" onSubmit={auftragAnlegen}>
+        <select
+          value={neuerAuftrag.kundeId}
+          onChange={(e) => setNeuerAuftrag((v) => ({ ...v, kundeId: e.target.value }))}
+        >
+          <option value="">Kunde wählen …</option>
+          {kundenListe.map((k) => (
+            <option value={k.id} key={k.id}>{k.vorname} {k.nachname} ({k.fensterbauerName})</option>
+          ))}
+        </select>
+        <input
+          type="text"
+          placeholder="BAFA-Vorgangs-ID (optional)"
+          value={neuerAuftrag.bafaVorgangsId}
+          onChange={(e) => setNeuerAuftrag((v) => ({ ...v, bafaVorgangsId: e.target.value }))}
+        />
+        <button className="aktion" type="submit">Neuer Auftrag</button>
+      </form>
+      {anlegenFehler && <div className="leer">Fehler: {anlegenFehler}</div>}
 
       {fehler && <div className="leer">Fehler: {fehler}</div>}
 
@@ -416,6 +463,8 @@ function Kundenverwaltung() {
   const [kunden, setKunden] = useState([]);
   const [fensterbauerListe, setFensterbauerListe] = useState([]);
   const [ausgewaehlt, setAusgewaehlt] = useState(null);
+  const [bearbeitung, setBearbeitung] = useState(null);
+  const [speichernStatus, setSpeichernStatus] = useState("");
   const [neu, setNeu] = useState({ ...LEERES_KONTAKT_FORMULAR, fensterbauerId: "" });
 
   const laden = useCallback(() => {
@@ -430,6 +479,9 @@ function Kundenverwaltung() {
   async function oeffne(id) {
     const k = await ladeJson(`/api/kunden/${id}`);
     setAusgewaehlt(k);
+    const { vorname, nachname, firma, strasse, plz, ort, telefon, email, bemerkungen, fensterbauerId } = k;
+    setBearbeitung({ vorname, nachname, firma, strasse, plz, ort, telefon, email, bemerkungen, fensterbauerId });
+    setSpeichernStatus("");
   }
 
   async function anlegen(e) {
@@ -446,6 +498,28 @@ function Kundenverwaltung() {
 
   function feldAendern(feld) {
     return (e) => setNeu((vorher) => ({ ...vorher, [feld]: e.target.value }));
+  }
+
+  function bearbeitungsFeldAendern(feld) {
+    return (e) => setBearbeitung((vorher) => ({ ...vorher, [feld]: e.target.value }));
+  }
+
+  async function speichern(e) {
+    e.preventDefault();
+    if (!bearbeitung.nachname || !bearbeitung.fensterbauerId) return;
+    setSpeichernStatus("Speichert …");
+    try {
+      const aktualisiert = await ladeJson(`/api/kunden/${ausgewaehlt.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bearbeitung),
+      });
+      setAusgewaehlt((vorher) => ({ ...vorher, ...aktualisiert }));
+      setSpeichernStatus("Gespeichert.");
+      laden();
+    } catch (fehler) {
+      setSpeichernStatus(`Fehler: ${fehler.message}`);
+    }
   }
 
   return (
@@ -495,20 +569,29 @@ function Kundenverwaltung() {
         </tbody>
       </table>
 
-      {ausgewaehlt && (
+      {ausgewaehlt && bearbeitung && (
         <div className="karte-panel">
           <button className="schliessen" onClick={() => setAusgewaehlt(null)}>Schließen ✕</button>
           <h3>{ausgewaehlt.vorname} {ausgewaehlt.nachname}{ausgewaehlt.firma ? ` (${ausgewaehlt.firma})` : ""}</h3>
-          <div className="feld-zeile">
-            <div className="feld"><div className="label">Adresse</div>{ausgewaehlt.strasse}, {ausgewaehlt.plz} {ausgewaehlt.ort}</div>
-            <div className="feld"><div className="label">Telefon</div>{ausgewaehlt.telefon}</div>
-            <div className="feld"><div className="label">E-Mail</div>{ausgewaehlt.email}</div>
-          </div>
-          {ausgewaehlt.bemerkungen && (
-            <div className="feld-zeile">
-              <div className="feld"><div className="label">Bemerkungen</div>{ausgewaehlt.bemerkungen}</div>
-            </div>
-          )}
+
+          <form className="form-neu" onSubmit={speichern}>
+            <input type="text" placeholder="Vorname" value={bearbeitung.vorname} onChange={bearbeitungsFeldAendern("vorname")} />
+            <input type="text" placeholder="Name" value={bearbeitung.nachname} onChange={bearbeitungsFeldAendern("nachname")} />
+            <input type="text" placeholder="Firma" value={bearbeitung.firma} onChange={bearbeitungsFeldAendern("firma")} />
+            <input type="text" placeholder="Straße" value={bearbeitung.strasse} onChange={bearbeitungsFeldAendern("strasse")} />
+            <input type="text" placeholder="PLZ" value={bearbeitung.plz} onChange={bearbeitungsFeldAendern("plz")} />
+            <input type="text" placeholder="Ort" value={bearbeitung.ort} onChange={bearbeitungsFeldAendern("ort")} />
+            <input type="text" placeholder="Telefonnummer" value={bearbeitung.telefon} onChange={bearbeitungsFeldAendern("telefon")} />
+            <input type="text" placeholder="E-Mail" value={bearbeitung.email} onChange={bearbeitungsFeldAendern("email")} />
+            <select value={bearbeitung.fensterbauerId} onChange={bearbeitungsFeldAendern("fensterbauerId")}>
+              <option value="">Fensterbauer wählen …</option>
+              {fensterbauerListe.map((f) => <option value={f.id} key={f.id}>{f.firma}</option>)}
+            </select>
+            <input type="text" placeholder="Bemerkungen" value={bearbeitung.bemerkungen} onChange={bearbeitungsFeldAendern("bemerkungen")} />
+            <button className="aktion" type="submit">Speichern</button>
+          </form>
+          {speichernStatus && <div className="leer">{speichernStatus}</div>}
+
           <h3>Vorgänge dieses Kunden</h3>
           {ausgewaehlt.vorgaenge.length === 0 && <div className="leer">Noch keine Vorgänge.</div>}
           {ausgewaehlt.vorgaenge.map((v) => (

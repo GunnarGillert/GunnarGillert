@@ -529,6 +529,15 @@ async function seedFallsLeer() {
     },
   ];
   for (const v of vorgaenge) await schreibe(VORGAENGE_DIR, v.id, v);
+
+  // Ohne diese Zeile würde der erste ECHT angelegte Vorgang wieder bei
+  // "EW-2026-00001" beginnen (Standardwert aus leereEinstellungen()) und
+  // damit den gleichnamigen Beispiel-Vorgang oben stillschweigend
+  // überschreiben (schreibe() legt Dateien pro ID an, keine Warnung bei
+  // Kollision). Deshalb den Zähler auf die nächste freie Nummer setzen.
+  const einstellungen = await leseEinstellungen();
+  einstellungen.naechsteFallnummer = vorgaenge.length + 1;
+  await schreibeEinstellungen(einstellungen);
 }
 
 // ----------------------------------------------------------------------------
@@ -622,6 +631,26 @@ app.post("/api/kunden", async (req, res) => {
   res.status(201).json(k);
 });
 
+app.patch("/api/kunden/:id", async (req, res) => {
+  const k = await leseEins(KUNDEN_DIR, req.params.id);
+  if (!k) return res.status(404).json({ fehler: "Kunde nicht gefunden." });
+  const { vorname, nachname, firma, strasse, plz, ort, telefon, email, bemerkungen, fensterbauerId } = req.body;
+  if (nachname !== undefined && !nachname) return res.status(400).json({ fehler: "Nachname darf nicht leer sein." });
+  if (fensterbauerId !== undefined && !fensterbauerId) return res.status(400).json({ fehler: "Fensterbauer darf nicht leer sein." });
+  if (vorname !== undefined) k.vorname = vorname;
+  if (nachname !== undefined) k.nachname = nachname;
+  if (firma !== undefined) k.firma = firma;
+  if (strasse !== undefined) k.strasse = strasse;
+  if (plz !== undefined) k.plz = plz;
+  if (ort !== undefined) k.ort = ort;
+  if (telefon !== undefined) k.telefon = telefon;
+  if (email !== undefined) k.email = email;
+  if (bemerkungen !== undefined) k.bemerkungen = bemerkungen;
+  if (fensterbauerId !== undefined) k.fensterbauerId = fensterbauerId;
+  await schreibe(KUNDEN_DIR, k.id, k);
+  res.json(k);
+});
+
 // ----------------------------------------------------------------------------
 // API: Vorgänge (Aufträge)
 // ----------------------------------------------------------------------------
@@ -666,13 +695,13 @@ app.get("/api/vorgaenge/:id", async (req, res) => {
 });
 
 app.post("/api/vorgaenge", async (req, res) => {
-  const { kundeId, fensterbauerId } = req.body;
+  const { kundeId, fensterbauerId, bafaVorgangsId } = req.body;
   if (!kundeId || !fensterbauerId) {
     return res.status(400).json({ fehler: "Kunde und Fensterbauer sind Pflichtfelder." });
   }
   const id = await naechsteVorgangsnummer();
   const v = {
-    id, bafaVorgangsId: "", kundeId, fensterbauerId, status: "eingang",
+    id, bafaVorgangsId: bafaVorgangsId || "", kundeId, fensterbauerId, status: "eingang",
     uWertPruefung: null, bescheid: null, rechnung: null, verwendungsnachweisFrist: null,
     dokumente: [],
     historie: [{ wer: "Sachbearbeiter", was: "Vorgang angelegt", wann: new Date().toISOString().slice(0, 10) }],
