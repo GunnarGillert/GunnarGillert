@@ -467,9 +467,23 @@ async function fuehreUWertPruefungDurch(v, dokument) {
     geprueftAm: heute,
   };
 
-  const zusammenfassung = pruefung.ergebnis === "nicht_moeglich"
-    ? `U-Wert-Prüfung für "${dokument.dateiname}" nicht möglich: ${v.uWertPruefung.fehler || "unbekannter Grund"}`
-    : `U-Wert-Prüfung für "${dokument.dateiname}" automatisch durchgeführt: Ergebnis "${pruefung.ergebnis}"`;
+  let zusammenfassung;
+  if (pruefung.ergebnis === "nicht_moeglich") {
+    zusammenfassung = `U-Wert-Prüfung für "${dokument.dateiname}" nicht möglich: ${v.uWertPruefung.fehler || "unbekannter Grund"}`;
+  } else {
+    // Ausführlicher als nur das Ergebnis, damit sich der Verlauf einer
+    // Prüfung (z. B. bei einem später ersetzten Angebot) allein aus der
+    // Historie nachvollziehen lässt - die "U-Wert-Prüfung"-Box am Vorgang
+    // zeigt ja immer nur den zuletzt gespeicherten Stand.
+    const einzelheiten = [`Ergebnis "${pruefung.ergebnis}"`];
+    if (pruefung.gefundeneUWerte.length > 0) {
+      einzelheiten.push(`gefundene U-Werte: ${pruefung.gefundeneUWerte.join(", ")}`);
+    }
+    if (pruefung.begruendung) {
+      einzelheiten.push(`Begründung: ${pruefung.begruendung}`);
+    }
+    zusammenfassung = `U-Wert-Prüfung für "${dokument.dateiname}" automatisch durchgeführt: ${einzelheiten.join(" – ")}`;
+  }
   v.historie.push({ wer: "System", was: zusammenfassung, wann: heute });
 }
 
