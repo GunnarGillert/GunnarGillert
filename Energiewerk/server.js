@@ -233,8 +233,8 @@ function enthaeltText(werte, suchtext) {
 // allgemeineren ("bescheid") geprüft werden.
 // ----------------------------------------------------------------------------
 const DOKUMENTTYPEN = [
-  "Angebot", "Antrag", "Bescheid", "Rechnung", "Zahlungsnachweis",
-  "Verwendungsnachweis", "Festsetzungsbescheid", "Sonstiges",
+  "Angebot", "Antrag", "Vollmacht", "U-Wert-Nachweis", "Bescheid", "Rechnung",
+  "Zahlungsnachweis", "Verwendungsnachweis", "Festsetzungsbescheid", "Sonstiges",
 ];
 
 const ERKENNUNGS_REIHENFOLGE = [
@@ -242,7 +242,13 @@ const ERKENNUNGS_REIHENFOLGE = [
   ["festsetzungsbescheid", "Festsetzungsbescheid"],
   ["verwendungsnachweis", "Verwendungsnachweis"],
   ["zahlungsnachweis", "Zahlungsnachweis"],
+  ["u-wert-nachweis", "U-Wert-Nachweis"],
+  ["u-wertnachweis", "U-Wert-Nachweis"],
+  ["uwert-nachweis", "U-Wert-Nachweis"],
+  ["uwertnachweis", "U-Wert-Nachweis"],
+  ["u_wert_nachweis", "U-Wert-Nachweis"],
   ["projektbeschreibung", "Antrag"],
+  ["vollmacht", "Vollmacht"],
   ["angebot", "Angebot"],
   ["antrag", "Antrag"],
   ["bescheid", "Bescheid"],
