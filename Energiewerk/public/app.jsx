@@ -47,6 +47,7 @@ async function ladeJson(url, optionen) {
     const inhalt = await antwort.json().catch(() => ({}));
     throw new Error(inhalt.fehler || `Anfrage fehlgeschlagen (HTTP ${antwort.status})`);
   }
+  if (antwort.status === 204) return null;
   return antwort.json();
 }
 
@@ -162,13 +163,15 @@ function Startseite({ aufSpringeZuAuftraege }) {
 // ----------------------------------------------------------------------------
 // Auftragsverwaltung
 // ----------------------------------------------------------------------------
-function Auftragsverwaltung({ startFilter, aufFilterUebernommen }) {
+function Auftragsverwaltung({ startFilter, aufFilterUebernommen, startVorgangId, aufVorgangUebernommen }) {
   const [suche, setSuche] = useState("");
   const [status, setStatus] = useState("");
   const [nurVn, setNurVn] = useState(false);
   const [nurZahlung, setNurZahlung] = useState(false);
   const [vorgaenge, setVorgaenge] = useState([]);
   const [ausgewaehlterVorgang, setAusgewaehlterVorgang] = useState(null);
+  const [bafaVorgangsIdEntwurf, setBafaVorgangsIdEntwurf] = useState("");
+  const [bafaSpeichernStatus, setBafaSpeichernStatus] = useState("");
   const [fehler, setFehler] = useState("");
   const [dokumenttypen, setDokumenttypen] = useState([]);
   const [hochladeLaeuft, setHochladeLaeuft] = useState(false);
@@ -202,6 +205,42 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen }) {
   async function oeffneVorgang(id) {
     const v = await ladeJson(`/api/vorgaenge/${id}`);
     setAusgewaehlterVorgang(v);
+    setBafaVorgangsIdEntwurf(v.bafaVorgangsId || "");
+    setBafaSpeichernStatus("");
+  }
+
+  useEffect(() => {
+    if (!startVorgangId) return;
+    oeffneVorgang(startVorgangId);
+    aufVorgangUebernommen();
+  }, [startVorgangId]);
+
+  async function bafaIdSpeichern(e) {
+    e.preventDefault();
+    setBafaSpeichernStatus("Speichert …");
+    try {
+      await ladeJson(`/api/vorgaenge/${ausgewaehlterVorgang.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bafaVorgangsId: bafaVorgangsIdEntwurf }),
+      });
+      await oeffneVorgang(ausgewaehlterVorgang.id);
+      setBafaSpeichernStatus("Gespeichert.");
+      laden();
+    } catch (fehler) {
+      setBafaSpeichernStatus(`Fehler: ${fehler.message}`);
+    }
+  }
+
+  async function vorgangLoeschen() {
+    if (!window.confirm(`Vorgang "${ausgewaehlterVorgang.id}" wirklich unwiderruflich löschen? Alle hochgeladenen Unterlagen werden mit gelöscht.`)) return;
+    try {
+      await ladeJson(`/api/vorgaenge/${ausgewaehlterVorgang.id}`, { method: "DELETE" });
+      setAusgewaehlterVorgang(null);
+      laden();
+    } catch (fehler) {
+      window.alert("Fehler beim Löschen: " + fehler.message);
+    }
   }
 
   async function auftragAnlegen(e) {
@@ -355,7 +394,21 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen }) {
           <div className="feld-zeile">
             <div className="feld"><div className="label">Kunde</div>{ausgewaehlterVorgang.kunde?.vorname} {ausgewaehlterVorgang.kunde?.nachname}</div>
             <div className="feld"><div className="label">Fensterbauer</div>{ausgewaehlterVorgang.fensterbauer?.firma}</div>
-            <div className="feld"><div className="label">BAFA-Vorgangs-ID</div>{ausgewaehlterVorgang.bafaVorgangsId || "–"}</div>
+            <div className="feld">
+              <div className="label">BAFA-Vorgangs-ID</div>
+              <form style={{ display: "flex", gap: 6 }} onSubmit={bafaIdSpeichern}>
+                <input
+                  type="text"
+                  style={{ width: 140 }}
+                  value={bafaVorgangsIdEntwurf}
+                  onChange={(e) => setBafaVorgangsIdEntwurf(e.target.value)}
+                />
+                <button className="aktion sekundaer" style={{ padding: "2px 8px", fontSize: 12, margin: 0 }} type="submit">
+                  Speichern
+                </button>
+              </form>
+              {bafaSpeichernStatus && <span style={{ fontSize: 12, color: "#5c6b66" }}>{bafaSpeichernStatus}</span>}
+            </div>
             <div className="feld"><div className="label">Status</div>{STATUS_LABEL[ausgewaehlterVorgang.status]}</div>
           </div>
           <div className="feld-zeile">
@@ -398,6 +451,7 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen }) {
             {ausgewaehlterVorgang.rechnung && ausgewaehlterVorgang.rechnung.zahlungsstatus !== "bezahlt" && (
               <button className="aktion sekundaer" onClick={markiereBezahlt}>Als bezahlt markieren</button>
             )}
+            <button className="aktion gefahr" onClick={vorgangLoeschen}>Vorgang löschen</button>
           </div>
 
           <h3>Unterlagen</h3>
@@ -458,7 +512,7 @@ const LEERES_KONTAKT_FORMULAR = {
   vorname: "", nachname: "", firma: "", strasse: "", plz: "", ort: "", telefon: "", email: "", bemerkungen: "",
 };
 
-function Kundenverwaltung() {
+function Kundenverwaltung({ aufSpringeZuVorgang }) {
   const [suche, setSuche] = useState("");
   const [kunden, setKunden] = useState([]);
   const [fensterbauerListe, setFensterbauerListe] = useState([]);
@@ -519,6 +573,17 @@ function Kundenverwaltung() {
       laden();
     } catch (fehler) {
       setSpeichernStatus(`Fehler: ${fehler.message}`);
+    }
+  }
+
+  async function loeschen() {
+    if (!window.confirm(`Kunde "${ausgewaehlt.vorname} ${ausgewaehlt.nachname}" wirklich unwiderruflich löschen?`)) return;
+    try {
+      await ladeJson(`/api/kunden/${ausgewaehlt.id}`, { method: "DELETE" });
+      setAusgewaehlt(null);
+      laden();
+    } catch (fehler) {
+      window.alert("Fehler beim Löschen: " + fehler.message);
     }
   }
 
@@ -589,13 +654,14 @@ function Kundenverwaltung() {
             </select>
             <input type="text" placeholder="Bemerkungen" value={bearbeitung.bemerkungen} onChange={bearbeitungsFeldAendern("bemerkungen")} />
             <button className="aktion" type="submit">Speichern</button>
+            <button className="aktion gefahr" type="button" onClick={loeschen}>Löschen</button>
           </form>
           {speichernStatus && <div className="leer">{speichernStatus}</div>}
 
           <h3>Vorgänge dieses Kunden</h3>
           {ausgewaehlt.vorgaenge.length === 0 && <div className="leer">Noch keine Vorgänge.</div>}
           {ausgewaehlt.vorgaenge.map((v) => (
-            <div className="historie-eintrag" key={v.id}>
+            <div className="historie-eintrag klickbar" key={v.id} onClick={() => aufSpringeZuVorgang(v.id)}>
               {v.id} — {STATUS_LABEL[v.status] || v.status}
             </div>
           ))}
@@ -608,7 +674,7 @@ function Kundenverwaltung() {
 // ----------------------------------------------------------------------------
 // Fensterbauerverwaltung
 // ----------------------------------------------------------------------------
-function Fensterbauerverwaltung() {
+function Fensterbauerverwaltung({ aufSpringeZuVorgang }) {
   const [suche, setSuche] = useState("");
   const [liste, setListe] = useState([]);
   const [ausgewaehlt, setAusgewaehlt] = useState(null);
@@ -667,6 +733,17 @@ function Fensterbauerverwaltung() {
       laden();
     } catch (fehler) {
       setSpeichernStatus(`Fehler: ${fehler.message}`);
+    }
+  }
+
+  async function loeschen() {
+    if (!window.confirm(`Fensterbauer "${ausgewaehlt.firma}" wirklich unwiderruflich löschen?`)) return;
+    try {
+      await ladeJson(`/api/fensterbauer/${ausgewaehlt.id}`, { method: "DELETE" });
+      setAusgewaehlt(null);
+      laden();
+    } catch (fehler) {
+      window.alert("Fehler beim Löschen: " + fehler.message);
     }
   }
 
@@ -737,6 +814,7 @@ function Fensterbauerverwaltung() {
               Aktiv
             </label>
             <button className="aktion" type="submit">Speichern</button>
+            <button className="aktion gefahr" type="button" onClick={loeschen}>Löschen</button>
           </form>
           {speichernStatus && <div className="leer">{speichernStatus}</div>}
 
@@ -746,7 +824,9 @@ function Fensterbauerverwaltung() {
           ))}
           <h3>Vorgänge ({ausgewaehlt.vorgaenge.length})</h3>
           {ausgewaehlt.vorgaenge.map((v) => (
-            <div className="historie-eintrag" key={v.id}>{v.id} — {STATUS_LABEL[v.status] || v.status}</div>
+            <div className="historie-eintrag klickbar" key={v.id} onClick={() => aufSpringeZuVorgang(v.id)}>
+              {v.id} — {STATUS_LABEL[v.status] || v.status}
+            </div>
           ))}
         </div>
       )}
@@ -1060,9 +1140,15 @@ function Einstellungen() {
 export default function App() {
   const [reiter, setReiter] = useState("startseite");
   const [auftraegeFilter, setAuftraegeFilter] = useState(null);
+  const [auftraegeVorgangId, setAuftraegeVorgangId] = useState(null);
 
   function springeZuAuftraegen(filter) {
     setAuftraegeFilter(filter);
+    setReiter("auftraege");
+  }
+
+  function springeZuVorgang(vorgangId) {
+    setAuftraegeVorgangId(vorgangId);
     setReiter("auftraege");
   }
 
@@ -1095,10 +1181,12 @@ export default function App() {
           <Auftragsverwaltung
             startFilter={auftraegeFilter}
             aufFilterUebernommen={() => setAuftraegeFilter(null)}
+            startVorgangId={auftraegeVorgangId}
+            aufVorgangUebernommen={() => setAuftraegeVorgangId(null)}
           />
         )}
-        {reiter === "kunden" && <Kundenverwaltung />}
-        {reiter === "fensterbauer" && <Fensterbauerverwaltung />}
+        {reiter === "kunden" && <Kundenverwaltung aufSpringeZuVorgang={springeZuVorgang} />}
+        {reiter === "fensterbauer" && <Fensterbauerverwaltung aufSpringeZuVorgang={springeZuVorgang} />}
         {reiter === "einstellungen" && <Einstellungen />}
       </main>
     </div>

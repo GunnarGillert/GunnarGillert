@@ -114,6 +114,14 @@ async function schreibe(dir, id, eintrag) {
   return eintrag;
 }
 
+async function loesche(dir, id) {
+  try {
+    await fsp.unlink(path.join(dir, `${id}.json`));
+  } catch (fehler) {
+    if (fehler.code !== "ENOENT") throw fehler;
+  }
+}
+
 function leereEinstellungen() {
   return {
     naechsteFallnummer: 1,
@@ -594,6 +602,21 @@ app.patch("/api/fensterbauer/:id", async (req, res) => {
   res.json(f);
 });
 
+app.delete("/api/fensterbauer/:id", async (req, res) => {
+  const f = await leseEins(FENSTERBAUER_DIR, req.params.id);
+  if (!f) return res.status(404).json({ fehler: "Fensterbauer nicht gefunden." });
+  const hatKunden = (await leseAlle(KUNDEN_DIR)).some((k) => k.fensterbauerId === f.id);
+  if (hatKunden) {
+    return res.status(400).json({ fehler: "Fensterbauer hat noch zugeordnete Kunden - diese zuerst löschen oder einem anderen Fensterbauer zuordnen." });
+  }
+  const hatVorgaenge = (await leseAlle(VORGAENGE_DIR)).some((v) => v.fensterbauerId === f.id);
+  if (hatVorgaenge) {
+    return res.status(400).json({ fehler: "Fensterbauer hat noch zugeordnete Vorgänge - diese zuerst löschen." });
+  }
+  await loesche(FENSTERBAUER_DIR, f.id);
+  res.status(204).end();
+});
+
 // ----------------------------------------------------------------------------
 // API: Kunden
 // ----------------------------------------------------------------------------
@@ -649,6 +672,17 @@ app.patch("/api/kunden/:id", async (req, res) => {
   if (fensterbauerId !== undefined) k.fensterbauerId = fensterbauerId;
   await schreibe(KUNDEN_DIR, k.id, k);
   res.json(k);
+});
+
+app.delete("/api/kunden/:id", async (req, res) => {
+  const k = await leseEins(KUNDEN_DIR, req.params.id);
+  if (!k) return res.status(404).json({ fehler: "Kunde nicht gefunden." });
+  const hatVorgaenge = (await leseAlle(VORGAENGE_DIR)).some((v) => v.kundeId === k.id);
+  if (hatVorgaenge) {
+    return res.status(400).json({ fehler: "Kunde hat noch zugeordnete Vorgänge - diese zuerst löschen." });
+  }
+  await loesche(KUNDEN_DIR, k.id);
+  res.status(204).end();
 });
 
 // ----------------------------------------------------------------------------
@@ -713,7 +747,7 @@ app.post("/api/vorgaenge", async (req, res) => {
 app.patch("/api/vorgaenge/:id", async (req, res) => {
   const v = await leseEins(VORGAENGE_DIR, req.params.id);
   if (!v) return res.status(404).json({ fehler: "Vorgang nicht gefunden." });
-  const { status, zahlungsstatus } = req.body;
+  const { status, zahlungsstatus, bafaVorgangsId } = req.body;
   const heute = new Date().toISOString().slice(0, 10);
   if (status && status !== v.status) {
     v.status = status;
@@ -723,8 +757,20 @@ app.patch("/api/vorgaenge/:id", async (req, res) => {
     v.rechnung.zahlungsstatus = zahlungsstatus;
     v.historie.push({ wer: "Sachbearbeiter", was: `Zahlungsstatus geändert zu "${zahlungsstatus}"`, wann: heute });
   }
+  if (bafaVorgangsId !== undefined && bafaVorgangsId !== v.bafaVorgangsId) {
+    v.bafaVorgangsId = bafaVorgangsId;
+    v.historie.push({ wer: "Sachbearbeiter", was: `BAFA-Vorgangs-ID geändert zu "${bafaVorgangsId || "–"}"`, wann: heute });
+  }
   await schreibe(VORGAENGE_DIR, v.id, v);
   res.json(mitFlags(v));
+});
+
+app.delete("/api/vorgaenge/:id", async (req, res) => {
+  const v = await leseEins(VORGAENGE_DIR, req.params.id);
+  if (!v) return res.status(404).json({ fehler: "Vorgang nicht gefunden." });
+  await loesche(VORGAENGE_DIR, v.id);
+  await fsp.rm(path.join(DOKUMENTE_DIR, v.id), { recursive: true, force: true });
+  res.status(204).end();
 });
 
 // ----------------------------------------------------------------------------
