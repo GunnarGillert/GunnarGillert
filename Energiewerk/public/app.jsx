@@ -497,13 +497,15 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen, startVorgangId,
                     </span>
                   ) : (
                     <span style={{ color: "#5c6b66" }}>Kein KI-Vorschlag möglich{d.kiVorschlag?.fehler ? ` (${d.kiVorschlag.fehler})` : ""}.</span>
-                  )}{" "}
-                  <select onChange={(e) => dokumenttypSetzen(d.id, e.target.value)} value="">
-                    <option value="">oder Typ manuell wählen …</option>
-                    {dokumenttypen.filter((t) => t !== "unbekannt").map((t) => <option value={t} key={t}>{t}</option>)}
-                  </select>
+                  )}
                 </div>
               )}
+              <div style={{ marginTop: 4 }}>
+                <select onChange={(e) => dokumenttypSetzen(d.id, e.target.value)} value="">
+                  <option value="">{d.typ === "unbekannt" ? "Typ manuell wählen …" : "Typ ändern zu …"}</option>
+                  {dokumenttypen.filter((t) => t !== "unbekannt" && t !== d.typ).map((t) => <option value={t} key={t}>{t}</option>)}
+                </select>
+              </div>
             </div>
           ))}
 
