@@ -529,6 +529,97 @@ async function fuehreUWertPruefungDurch(v, dokument) {
   v.historie.push({ wer: "System", was: zusammenfassung, wann: heute });
 }
 
+function formatEuroDe(betrag) {
+  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(betrag);
+}
+
+// ----------------------------------------------------------------------------
+// Zuschusswert aus einem Zuwendungsbescheid auslesen und automatisch als
+// Bescheidwert am Vorgang übernehmen (Betrag + Bescheiddatum) - spart das
+// manuelle Abtippen aus dem Bescheid-PDF. Wie bei der U-Wert-Prüfung wird
+// IMMER ein Historieneintrag angelegt, auch wenn die Auswertung fehlschlägt,
+// damit unklar bleibt, warum kein Wert übernommen wurde.
+// ----------------------------------------------------------------------------
+async function holeZuwendungsbescheidWert(text) {
+  const einstellungen = await leseEinstellungen();
+  const apiKey = einstellungen.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { betrag: null, datum: null, fehler: "Kein Claude-API-Key hinterlegt (Einstellungen bzw. ANTHROPIC_API_KEY)." };
+  if (!text) return { betrag: null, datum: null, fehler: "Kein Text aus dem Zuwendungsbescheid extrahierbar." };
+
+  try {
+    const antwort = await fetchMitZeitlimit("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 300,
+        messages: [{
+          role: "user",
+          content: `Text eines BAFA-Zuwendungsbescheids:\n"""\n${text}\n"""\n\n` +
+            `Ermittle den bewilligten Zuschussbetrag (Förderbetrag/Zuwendungsbetrag in Euro) sowie ` +
+            `das Datum des Bescheids. Antworte AUSSCHLIESSLICH mit einem JSON-Objekt der Form ` +
+            `{"betrag": Zahl in Euro ohne Tausendertrennzeichen und ohne Währungssymbol (z. B. 3200.5) ` +
+            `oder null, "datum": "JJJJ-MM-TT" oder null} ohne weiteren Text. Nutze null, wenn sich ein ` +
+            `Wert nicht eindeutig im Text finden lässt.`,
+        }],
+      }),
+    }, 20000);
+
+    if (!antwort.ok) {
+      return { betrag: null, datum: null, fehler: `Claude-API antwortete mit HTTP ${antwort.status}.` };
+    }
+    const daten = await antwort.json();
+    const rohtext = daten.content?.[0]?.text || "";
+    const treffer = rohtext.match(/\{[\s\S]*\}/);
+    if (!treffer) return { betrag: null, datum: null, fehler: "Antwort der KI enthielt kein auswertbares JSON." };
+
+    const geparst = JSON.parse(treffer[0]);
+    const betrag = typeof geparst.betrag === "number" && Number.isFinite(geparst.betrag) ? geparst.betrag : null;
+    const datum = typeof geparst.datum === "string" && /^\d{4}-\d{2}-\d{2}$/.test(geparst.datum) ? geparst.datum : null;
+    if (betrag === null) {
+      return { betrag: null, datum, fehler: "Im Zuwendungsbescheid konnte kein eindeutiger Zuschussbetrag gefunden werden." };
+    }
+    return { betrag, datum, fehler: null };
+  } catch (fehler) {
+    return { betrag: null, datum: null, fehler: `KI-Anfrage fehlgeschlagen: ${fehler.message}` };
+  }
+}
+
+async function fuehreZuwendungsbescheidAuswertungDurch(v, dokument) {
+  const heute = new Date().toISOString().slice(0, 10);
+
+  let text = "";
+  let extraktionsFehler = null;
+  try {
+    const buffer = await fsp.readFile(path.join(DOKUMENTE_DIR, v.id, dokument.gespeicherterDateiname));
+    const ergebnis = await extrahiereText(buffer, dokument.dateiname);
+    text = ergebnis.text;
+    extraktionsFehler = ergebnis.fehler;
+  } catch (fehler) {
+    extraktionsFehler = `Zuwendungsbescheid konnte nicht gelesen werden: ${fehler.message}`;
+  }
+
+  const auswertung = text
+    ? await holeZuwendungsbescheidWert(text)
+    : { betrag: null, datum: null, fehler: extraktionsFehler || "Kein Text extrahierbar." };
+
+  if (auswertung.betrag !== null) {
+    v.bescheid = { betrag: auswertung.betrag, datum: auswertung.datum || heute };
+    const datumsHinweis = auswertung.datum ? ` (Bescheiddatum ${formatDatumDe(auswertung.datum)})` : "";
+    v.historie.push({
+      wer: "System",
+      was: `Zuschusswert aus "${dokument.dateiname}" automatisch als Bescheidwert übernommen: ${formatEuroDe(auswertung.betrag)}${datumsHinweis}`,
+      wann: heute,
+    });
+  } else {
+    v.historie.push({
+      wer: "System",
+      was: `Zuschusswert aus "${dokument.dateiname}" konnte nicht automatisch ermittelt werden: ${auswertung.fehler || "unbekannter Grund"} - bitte bei Bedarf manuell nachtragen.`,
+      wann: heute,
+    });
+  }
+}
+
 // ----------------------------------------------------------------------------
 // Beispieldaten (nur beim allerersten Start, wenn noch nichts angelegt ist -
 // damit sich der Prototyp sofort ausprobieren lässt)
@@ -900,6 +991,12 @@ app.post("/api/vorgaenge/:id/dokumente", upload.single("datei"), async (req, res
     await fuehreUWertPruefungDurch(v, dokument);
   }
 
+  // Ebenso: Zuschusswert automatisch aus einem eingehenden Zuwendungsbescheid
+  // übernehmen, statt ihn manuell abtippen zu müssen.
+  if (dokument.typ === "Zuwendungsbescheid") {
+    await fuehreZuwendungsbescheidAuswertungDurch(v, dokument);
+  }
+
   await schreibe(VORGAENGE_DIR, v.id, v);
   res.status(201).json(mitFlags(v));
 });
@@ -914,6 +1011,7 @@ app.patch("/api/vorgaenge/:id/dokumente/:dokumentId", async (req, res) => {
 
   const heute = new Date().toISOString().slice(0, 10);
   const warVorherAngebot = dokument.typ === "Angebot";
+  const warVorherZuwendungsbescheid = dokument.typ === "Zuwendungsbescheid";
   dokument.typ = typ;
   v.historie.push({
     wer: "Sachbearbeiter",
@@ -926,6 +1024,12 @@ app.patch("/api/vorgaenge/:id/dokumente/:dokumentId", async (req, res) => {
   // erneut, falls es schon vorher "Angebot" war und nur umbenannt wurde.
   if (typ === "Angebot" && !warVorherAngebot) {
     await fuehreUWertPruefungDurch(v, dokument);
+  }
+
+  // Ebenso fuer den Zuschusswert, wenn ein Dokument nachtraeglich als
+  // "Zuwendungsbescheid" bestaetigt wird.
+  if (typ === "Zuwendungsbescheid" && !warVorherZuwendungsbescheid) {
+    await fuehreZuwendungsbescheidAuswertungDurch(v, dokument);
   }
 
   await schreibe(VORGAENGE_DIR, v.id, v);

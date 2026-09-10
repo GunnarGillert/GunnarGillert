@@ -366,6 +366,7 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen, startVorgangId,
         <thead>
           <tr>
             <th>Vorgang</th><th>Kunde</th><th>Fensterbauer</th><th>Status</th>
+            <th>U-Wert-Prüfung</th>
             <th>Bescheid</th><th>Rechnung fällig</th><th>Überfällig</th>
           </tr>
         </thead>
@@ -376,6 +377,13 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen, startVorgangId,
               <td>{v.kundeName}</td>
               <td>{v.fensterbauerName}</td>
               <td><span className="badge status">{STATUS_LABEL[v.status] || v.status}</span></td>
+              <td>
+                {v.uWertPruefung ? (
+                  <span className={`badge ${UWERT_ERGEBNIS_KLASSE[v.uWertPruefung.ergebnis] || "unbekannt"}`}>
+                    {UWERT_ERGEBNIS_LABEL[v.uWertPruefung.ergebnis] || v.uWertPruefung.ergebnis}
+                  </span>
+                ) : "–"}
+              </td>
               <td>{v.bescheid ? formatEuro(v.bescheid.betrag) : "–"}</td>
               <td>{v.rechnung ? formatDatum(v.rechnung.faelligkeitsdatum) : "–"}</td>
               <td>
@@ -385,7 +393,7 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen, startVorgangId,
             </tr>
           ))}
           {vorgaenge.length === 0 && (
-            <tr><td colSpan="7" className="leer">Keine Vorgänge gefunden.</td></tr>
+            <tr><td colSpan="8" className="leer">Keine Vorgänge gefunden.</td></tr>
           )}
         </tbody>
       </table>
