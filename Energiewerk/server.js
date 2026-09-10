@@ -918,6 +918,37 @@ app.patch("/api/vorgaenge/:id", async (req, res) => {
   res.json(mitFlags(v));
 });
 
+// Manuelles Überschreiben eines unsicheren/nicht konformen U-Wert-Prüfungs-
+// ergebnisses auf "konform" - z. B. wenn die KI die U-Werte falsch gelesen
+// hat oder der Sachbearbeiter die Konformität anderweitig geprüft hat.
+// Eine Begründung ist Pflicht (Nachvollziehbarkeit/Compliance-Nachweis, wie
+// beim automatischen Prüfergebnis selbst). Das ursprüngliche KI-Ergebnis
+// bleibt unter manuellUeberschrieben erhalten statt überschrieben zu werden.
+app.patch("/api/vorgaenge/:id/uwert-pruefung", async (req, res) => {
+  const v = await leseEins(VORGAENGE_DIR, req.params.id);
+  if (!v) return res.status(404).json({ fehler: "Vorgang nicht gefunden." });
+  if (!v.uWertPruefung) return res.status(400).json({ fehler: "Noch keine U-Wert-Prüfung vorhanden." });
+  if (!["unsicher", "nicht_konform"].includes(v.uWertPruefung.ergebnis)) {
+    return res.status(400).json({ fehler: "Nur ein Ergebnis von \"unsicher\" oder \"nicht konform\" lässt sich manuell auf \"konform\" setzen." });
+  }
+  const begruendung = String(req.body.begruendung || "").trim();
+  if (!begruendung) return res.status(400).json({ fehler: "Begründung ist Pflichtfeld." });
+
+  const heute = new Date().toISOString().slice(0, 10);
+  const vorherigesErgebnis = v.uWertPruefung.ergebnis;
+  v.uWertPruefung.manuellUeberschrieben = { vorherigesErgebnis, begruendung, wann: heute };
+  v.uWertPruefung.ergebnis = "konform";
+
+  v.historie.push({
+    wer: "Sachbearbeiter",
+    was: `U-Wert-Prüfung manuell von "${vorherigesErgebnis}" auf "konform" gesetzt - Begründung: ${begruendung}`,
+    wann: heute,
+  });
+
+  await schreibe(VORGAENGE_DIR, v.id, v);
+  res.json(mitFlags(v));
+});
+
 app.delete("/api/vorgaenge/:id", async (req, res) => {
   const v = await leseEins(VORGAENGE_DIR, req.params.id);
   if (!v) return res.status(404).json({ fehler: "Vorgang nicht gefunden." });

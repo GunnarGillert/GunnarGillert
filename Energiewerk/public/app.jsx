@@ -172,6 +172,8 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen, startVorgangId,
   const [ausgewaehlterVorgang, setAusgewaehlterVorgang] = useState(null);
   const [bafaVorgangsIdEntwurf, setBafaVorgangsIdEntwurf] = useState("");
   const [bafaSpeichernStatus, setBafaSpeichernStatus] = useState("");
+  const [uWertBegruendungEntwurf, setUWertBegruendungEntwurf] = useState("");
+  const [uWertUeberschreibenStatus, setUWertUeberschreibenStatus] = useState("");
   const [fehler, setFehler] = useState("");
   const [dokumenttypen, setDokumenttypen] = useState([]);
   const [hochladeLaeuft, setHochladeLaeuft] = useState(false);
@@ -207,6 +209,8 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen, startVorgangId,
     setAusgewaehlterVorgang(v);
     setBafaVorgangsIdEntwurf(v.bafaVorgangsId || "");
     setBafaSpeichernStatus("");
+    setUWertBegruendungEntwurf("");
+    setUWertUeberschreibenStatus("");
   }
 
   useEffect(() => {
@@ -229,6 +233,26 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen, startVorgangId,
       laden();
     } catch (fehler) {
       setBafaSpeichernStatus(`Fehler: ${fehler.message}`);
+    }
+  }
+
+  async function uWertAufKonformSetzen(e) {
+    e.preventDefault();
+    if (!uWertBegruendungEntwurf.trim()) {
+      setUWertUeberschreibenStatus("Fehler: Begründung ist Pflichtfeld.");
+      return;
+    }
+    setUWertUeberschreibenStatus("Speichert …");
+    try {
+      await ladeJson(`/api/vorgaenge/${ausgewaehlterVorgang.id}/uwert-pruefung`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ begruendung: uWertBegruendungEntwurf }),
+      });
+      await oeffneVorgang(ausgewaehlterVorgang.id);
+      laden();
+    } catch (fehler) {
+      setUWertUeberschreibenStatus(`Fehler: ${fehler.message}`);
     }
   }
 
@@ -461,6 +485,33 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen, startVorgangId,
             </div>
           ) : (
             <div className="leer">Noch keine Prüfung (läuft automatisch, sobald ein Dokument als „Angebot" hochgeladen bzw. zugeordnet wird).</div>
+          )}
+
+          {ausgewaehlterVorgang.uWertPruefung?.manuellUeberschrieben && (
+            <div className="leer" style={{ textAlign: "left" }}>
+              Manuell auf „konform" gesetzt am {formatDatum(ausgewaehlterVorgang.uWertPruefung.manuellUeberschrieben.wann)}
+              {" "}(ursprüngliches Ergebnis: {UWERT_ERGEBNIS_LABEL[ausgewaehlterVorgang.uWertPruefung.manuellUeberschrieben.vorherigesErgebnis] || ausgewaehlterVorgang.uWertPruefung.manuellUeberschrieben.vorherigesErgebnis}).
+              Begründung: {ausgewaehlterVorgang.uWertPruefung.manuellUeberschrieben.begruendung}
+            </div>
+          )}
+
+          {ausgewaehlterVorgang.uWertPruefung && ["unsicher", "nicht_konform"].includes(ausgewaehlterVorgang.uWertPruefung.ergebnis) && (
+            <form style={{ marginTop: 6 }} onSubmit={uWertAufKonformSetzen}>
+              <div className="feld">
+                <div className="label">Trotzdem als konform bestätigen (Begründung Pflicht)</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <input
+                    type="text"
+                    style={{ minWidth: 280, flex: 1 }}
+                    placeholder="z. B. U-Werte händisch mit Herstellerdatenblatt abgeglichen, Grenzwert eingehalten"
+                    value={uWertBegruendungEntwurf}
+                    onChange={(e) => setUWertBegruendungEntwurf(e.target.value)}
+                  />
+                  <button className="aktion sekundaer" style={{ margin: 0 }} type="submit">Als konform setzen</button>
+                </div>
+              </div>
+              {uWertUeberschreibenStatus && <div className="leer">{uWertUeberschreibenStatus}</div>}
+            </form>
           )}
 
           <div>
