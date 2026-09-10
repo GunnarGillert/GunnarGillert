@@ -231,6 +231,32 @@ function fmt2(zahl) {
   return (Math.round((zahl + Number.EPSILON) * 100) / 100).toFixed(2).replace(".", ",");
 }
 
+// Ein Vorgang kann mehrere selbst erstellte Rechnungen haben (Reiter
+// "Rechnungen"), aber v.rechnung ist nur eine Kurzinfo für die
+// Aufträge-Übersicht (Spalte "Rechnung fällig", Überfällig-Filter). Damit
+// diese Kurzinfo nicht einfach die zuletzt erstellte/geänderte Rechnung
+// zeigt und dabei eine ältere, noch offene und überfällige Rechnung
+// verdeckt, wird hier aus ALLEN Rechnungen des Vorgangs die dringendste
+// ausgewählt: die offene mit der frühesten Fälligkeit, oder - falls alle
+// bezahlt sind - die zuletzt erstellte (höchste Belegnummer).
+async function aktualisiereRechnungsUebersicht(v) {
+  const rechnungen = (await leseAlle(RECHNUNGEN_DIR)).filter((r) => r.vorgangId === v.id);
+  if (rechnungen.length === 0) {
+    v.rechnung = null;
+    return;
+  }
+  const offene = rechnungen.filter((r) => r.zahlungsstatus !== "bezahlt");
+  const repraesentativ = offene.length > 0
+    ? offene.reduce((a, b) => (a.faelligkeitsdatum <= b.faelligkeitsdatum ? a : b))
+    : rechnungen.reduce((a, b) => (a.belegnummer > b.belegnummer ? a : b));
+  v.rechnung = {
+    betrag: repraesentativ.endbetrag,
+    faelligkeitsdatum: repraesentativ.faelligkeitsdatum,
+    zahlungsstatus: repraesentativ.zahlungsstatus,
+    rechnungId: repraesentativ.id,
+  };
+}
+
 // ----------------------------------------------------------------------------
 // Abgeleitete Flags (nicht gespeichert, wie bei Parkwerks "Zahlung
 // überfällig" - aus Frist + heutigem Datum berechnet)
@@ -936,17 +962,32 @@ app.patch("/api/vorgaenge/:id", async (req, res) => {
     v.historie.push({ wer: "Sachbearbeiter", was: `Status geändert zu "${status}"`, wann: heute });
   }
   if (zahlungsstatus && v.rechnung) {
-    v.rechnung.zahlungsstatus = zahlungsstatus;
-    v.historie.push({ wer: "Sachbearbeiter", was: `Zahlungsstatus geändert zu "${zahlungsstatus}"`, wann: heute });
-    // Denselben Status auch an der zugrunde liegenden, selbst erstellten
-    // Rechnung nachführen (falls vorhanden), damit beide Ansichten
-    // (Vorgang-Übersicht und Reiter "Rechnungen") übereinstimmen.
     if (v.rechnung.rechnungId) {
+      // v.rechnung zeigt hier die aktuell dringendste (offene, am
+      // frühesten fällige - oder falls alle bezahlt: zuletzt erstellte)
+      // selbst erstellte Rechnung. "Als bezahlt markieren" wirkt gezielt
+      // auf genau diese eine Rechnung; danach wird die Übersicht aus
+      // ALLEN Rechnungen des Vorgangs neu ermittelt, sodass eine weitere,
+      // noch offene und ggf. überfällige Rechnung sichtbar bleibt statt
+      // durch ein pauschales "bezahlt" verdeckt zu werden.
       const zugehoerigeRechnung = await leseEins(RECHNUNGEN_DIR, v.rechnung.rechnungId);
       if (zugehoerigeRechnung) {
         zugehoerigeRechnung.zahlungsstatus = zahlungsstatus;
         await schreibe(RECHNUNGEN_DIR, zugehoerigeRechnung.id, zugehoerigeRechnung);
+        v.historie.push({
+          wer: "Sachbearbeiter",
+          was: `Zahlungsstatus der Rechnung "${zugehoerigeRechnung.belegnummer}" geändert zu "${zahlungsstatus}"`,
+          wann: heute,
+        });
       }
+      await aktualisiereRechnungsUebersicht(v);
+    } else {
+      // Legacy-Fall: Rechnung wurde außerhalb des Reiters "Rechnungen"
+      // erfasst (z. B. Demo-Daten oder hochgeladenes Dokument) - es gibt
+      // keinen verknüpften Rechnungsdatensatz, den man stattdessen
+      // aktualisieren könnte.
+      v.rechnung.zahlungsstatus = zahlungsstatus;
+      v.historie.push({ wer: "Sachbearbeiter", was: `Zahlungsstatus geändert zu "${zahlungsstatus}"`, wann: heute });
     }
   }
   if (bafaVorgangsId !== undefined && bafaVorgangsId !== v.bafaVorgangsId) {
@@ -1396,12 +1437,12 @@ app.post("/api/rechnungen", async (req, res) => {
   await schreibe(RECHNUNGEN_DIR, id, rechnung);
 
   const heute = new Date().toISOString().slice(0, 10);
-  const warUeberschrieben = Boolean(v.rechnung);
-  v.rechnung = { betrag: endbetrag, faelligkeitsdatum: rechnung.faelligkeitsdatum, zahlungsstatus: "offen", rechnungId: id };
+  const hatteBereitsRechnungen = Boolean(v.rechnung);
+  await aktualisiereRechnungsUebersicht(v);
   v.historie.push({
     wer: "Sachbearbeiter",
     was: `Rechnung "${belegnummer}" (${typ}) über ${fmt2(endbetrag)} EUR erstellt, fällig am ${formatDatumDe(rechnung.faelligkeitsdatum)}` +
-      (warUeberschrieben ? " (ersetzt die bisher am Vorgang hinterlegte Rechnungsübersicht - alle Rechnungen bleiben im Reiter 'Rechnungen' einsehbar)" : ""),
+      (hatteBereitsRechnungen ? " (weitere Rechnung zu diesem Vorgang - alle Rechnungen bleiben im Reiter 'Rechnungen' einsehbar)" : ""),
     wann: heute,
   });
   await schreibe(VORGAENGE_DIR, v.id, v);
@@ -1417,12 +1458,12 @@ app.patch("/api/rechnungen/:id", async (req, res) => {
   r.zahlungsstatus = zahlungsstatus;
   await schreibe(RECHNUNGEN_DIR, r.id, r);
 
-  // Spiegelt den Status auch an der Rechnungsübersicht des Vorgangs, falls
-  // diese Rechnung die dort aktuell hinterlegte ist (symmetrisch zum
-  // umgekehrten Weg über "Als bezahlt markieren" am Vorgang selbst).
+  // Spiegelt den Status auch an der Rechnungsübersicht des Vorgangs
+  // (neu aus ALLEN Rechnungen des Vorgangs ermittelt, nicht nur dieser
+  // einen - siehe aktualisiereRechnungsUebersicht).
   const v = await leseEins(VORGAENGE_DIR, r.vorgangId);
-  if (v && v.rechnung?.rechnungId === r.id) {
-    v.rechnung.zahlungsstatus = zahlungsstatus;
+  if (v) {
+    await aktualisiereRechnungsUebersicht(v);
     v.historie.push({
       wer: "Sachbearbeiter",
       was: `Zahlungsstatus der Rechnung "${r.belegnummer}" geändert zu "${zahlungsstatus}"`,
@@ -1439,11 +1480,11 @@ app.delete("/api/rechnungen/:id", async (req, res) => {
   await loesche(RECHNUNGEN_DIR, r.id);
 
   const v = await leseEins(VORGAENGE_DIR, r.vorgangId);
-  if (v && v.rechnung?.rechnungId === r.id) {
-    v.rechnung = null;
+  if (v) {
+    await aktualisiereRechnungsUebersicht(v);
     v.historie.push({
       wer: "Sachbearbeiter",
-      was: `Rechnung "${r.belegnummer}" gelöscht - Rechnungsübersicht am Vorgang zurückgesetzt.`,
+      was: `Rechnung "${r.belegnummer}" gelöscht - Rechnungsübersicht am Vorgang neu ermittelt.`,
       wann: new Date().toISOString().slice(0, 10),
     });
     await schreibe(VORGAENGE_DIR, v.id, v);
