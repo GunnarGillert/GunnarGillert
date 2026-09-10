@@ -276,6 +276,25 @@ Schritt inzwischen einen entsprechenden Hinweistext aus und ruft `npm
 install` mit `--no-audit --no-fund` auf (spart zwei für den Betrieb
 unnötige zusätzliche Netzwerk-Anfragen).
 
+**Update meldet Erfolg (`version-info.json`/„Nach Updates suchen" zeigen den
+neuesten Stand), trotzdem fehlen im Betrieb neue Funktionen/Inhalte:**
+`Start-Service` in PowerShell wartet NICHT darauf, dass der Dienst
+tatsächlich in den Status „Running" kommt – es meldet nur, dass der
+*Start-Befehl* erfolgreich abgeschickt wurde. Beobachtet: Ein Update lief
+scheinbar vollständig durch (Dateien aktuell, `version-info.json` korrekt),
+während im Hintergrund weiterhin eine ALTE Instanz lief – z. B. eine vor der
+Dienst-Einrichtung manuell über `Start.bat`/die Desktop-Verknüpfung
+gestartete, seitdem nie beendete `node.exe`, die den Port bereits belegte
+und den Dienst dadurch am echten Start hinderte, ohne dass `Start-Service`
+selbst einen Fehler warf. `Install.ps1`/`Update.ps1` prüfen nach dem
+Start-Versuch jetzt aktiv (`WaitForStatus("Running", …)`), ob der Dienst
+wirklich läuft, und geben bei Fehlschlag eine deutliche, rote
+Fehlermeldung mit konkreten Prüfschritten aus, statt nur eine leicht zu
+übersehende gelbe Warnung. **Für Betroffene mit diesem Fehlerbild:**
+Task-Manager → Details → alle `node.exe`-Prozesse auflisten; mehr als
+einer, alle beenden und den Dienst danach über `services.msc` →
+„Energiewerk" → Starten sauber neu starten.
+
 ## Warum
 
 Das Fördergeschäft ist operativ klar, aber technologisch fragmentiert:

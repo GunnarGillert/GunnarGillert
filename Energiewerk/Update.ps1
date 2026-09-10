@@ -17,6 +17,38 @@ function Abschnitt($text) {
     Write-Host "=== $text ===" -ForegroundColor Cyan
 }
 
+# Siehe identischer Kommentar in Install.ps1: Start-Service wartet NICHT
+# darauf, dass der Dienst wirklich hochfaehrt - ein einmal live beobachteter
+# Fall zeigte ein scheinbar erfolgreiches Update (Dateien/version-info.json
+# aktuell), waehrend im Hintergrund eine alte, nie beendete Instanz (Port
+# bereits belegt) weiterlief. Aktiv nachpruefen statt nur anzunehmen.
+function PruefeDienstLaeuftWirklich {
+    param([int]$TimeoutSekunden = 15)
+    $dienstNeu = Get-Service -Name "Energiewerk" -ErrorAction SilentlyContinue
+    if (-not $dienstNeu) { return $false }
+    try { $dienstNeu.WaitForStatus("Running", (New-TimeSpan -Seconds $TimeoutSekunden)) } catch {}
+    $dienstNeu.Refresh()
+    if ($dienstNeu.Status -eq "Running") { return $true }
+
+    Write-Host ""
+    Write-Host "FEHLER: Der Windows-Dienst 'Energiewerk' laeuft nach dem Start-Versuch NICHT" -ForegroundColor Red
+    Write-Host "(aktueller Status: $($dienstNeu.Status))." -ForegroundColor Red
+    Write-Host "Die Update-Dateien sind zwar aktuell, im Hintergrund laeuft aber vermutlich" -ForegroundColor Red
+    Write-Host "weiterhin eine ALTE Instanz - z. B. eine vor der Dienst-Einrichtung manuell" -ForegroundColor Red
+    Write-Host "gestartete, seitdem nie beendete node.exe, die den Port bereits belegt und" -ForegroundColor Red
+    Write-Host "den Dienst so am echten Start hindert." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Bitte pruefen:" -ForegroundColor Yellow
+    Write-Host "  1. Task-Manager -> Details -> alle 'node.exe'-Prozesse auflisten. Mehr" -ForegroundColor Yellow
+    Write-Host "     als einer? Alle beenden, danach ueber services.msc -> 'Energiewerk'" -ForegroundColor Yellow
+    Write-Host "     -> Starten den Dienst sauber neu starten." -ForegroundColor Yellow
+    Write-Host "  2. services.msc -> 'Energiewerk' -> Status pruefen bzw. per Rechtsklick" -ForegroundColor Yellow
+    Write-Host "     'Starten' versuchen - eine dort angezeigte Fehlermeldung nennt den" -ForegroundColor Yellow
+    Write-Host "     genauen Grund (z. B. Port durch ein anderes Programm belegt)." -ForegroundColor Yellow
+    Write-Host ""
+    return $false
+}
+
 $InstallDir = Join-Path $env:ProgramFiles "Energiewerk"
 
 # ---------------------------------------------------------------------------
@@ -268,10 +300,11 @@ if ($Dienst) {
     if ($DienstStatus -and $DienstStatus.Status -ne "Running") {
         try {
             Start-Service -Name "Energiewerk"
-            Write-Host "Windows-Dienst 'Energiewerk' gestartet."
         } catch {
-            Write-Host "Dienst konnte nicht automatisch gestartet werden: $($_.Exception.Message)" -ForegroundColor Yellow
-            Write-Host "Bitte manuell ueber services.msc -> 'Energiewerk' -> Starten." -ForegroundColor Yellow
+            Write-Host "Start-Service meldete einen Fehler: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+        if (PruefeDienstLaeuftWirklich) {
+            Write-Host "Windows-Dienst 'Energiewerk' gestartet."
         }
     } else {
         Write-Host "Windows-Dienst 'Energiewerk' laeuft bereits mit der aktualisierten Version."
