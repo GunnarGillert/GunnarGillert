@@ -246,7 +246,10 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen, startVorgangId,
   async function auftragAnlegen(e) {
     e.preventDefault();
     const kunde = kundenListe.find((k) => k.id === neuerAuftrag.kundeId);
-    if (!kunde) return;
+    if (!kunde) {
+      setAnlegenFehler("Bitte einen Kunden auswählen.");
+      return;
+    }
     setAnlegenFehler("");
     try {
       const v = await ladeJson("/api/vorgaenge", {
@@ -531,6 +534,7 @@ function Kundenverwaltung({ aufSpringeZuVorgang }) {
   const [bearbeitung, setBearbeitung] = useState(null);
   const [speichernStatus, setSpeichernStatus] = useState("");
   const [neu, setNeu] = useState({ ...LEERES_KONTAKT_FORMULAR, fensterbauerId: "" });
+  const [anlegenFehler, setAnlegenFehler] = useState("");
 
   const laden = useCallback(() => {
     const params = new URLSearchParams();
@@ -551,14 +555,22 @@ function Kundenverwaltung({ aufSpringeZuVorgang }) {
 
   async function anlegen(e) {
     e.preventDefault();
-    if (!neu.nachname || !neu.fensterbauerId) return;
-    await ladeJson("/api/kunden", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(neu),
-    });
-    setNeu({ ...LEERES_KONTAKT_FORMULAR, fensterbauerId: "" });
-    laden();
+    if (!neu.nachname || !neu.fensterbauerId) {
+      setAnlegenFehler("Name und Fensterbauer sind Pflichtfelder.");
+      return;
+    }
+    setAnlegenFehler("");
+    try {
+      await ladeJson("/api/kunden", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(neu),
+      });
+      setNeu({ ...LEERES_KONTAKT_FORMULAR, fensterbauerId: "" });
+      laden();
+    } catch (fehler) {
+      setAnlegenFehler(fehler.message);
+    }
   }
 
   function feldAendern(feld) {
@@ -625,6 +637,7 @@ function Kundenverwaltung({ aufSpringeZuVorgang }) {
         <input type="text" placeholder="Bemerkungen" value={neu.bemerkungen} onChange={feldAendern("bemerkungen")} />
         <button className="aktion" type="submit">Anlegen</button>
       </form>
+      {anlegenFehler && <div className="leer">Fehler: {anlegenFehler}</div>}
 
       <table>
         <thead>
@@ -692,6 +705,7 @@ function Fensterbauerverwaltung({ aufSpringeZuVorgang }) {
   const [bearbeitung, setBearbeitung] = useState(null);
   const [speichernStatus, setSpeichernStatus] = useState("");
   const [neu, setNeu] = useState({ ...LEERES_KONTAKT_FORMULAR, kuerzel: "" });
+  const [anlegenFehler, setAnlegenFehler] = useState("");
 
   const laden = useCallback(() => {
     const params = new URLSearchParams();
@@ -711,14 +725,22 @@ function Fensterbauerverwaltung({ aufSpringeZuVorgang }) {
 
   async function anlegen(e) {
     e.preventDefault();
-    if (!neu.firma || !neu.kuerzel) return;
-    await ladeJson("/api/fensterbauer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(neu),
-    });
-    setNeu({ ...LEERES_KONTAKT_FORMULAR, kuerzel: "" });
-    laden();
+    if (!neu.firma || !neu.kuerzel) {
+      setAnlegenFehler("Firma und Kürzel sind Pflichtfelder.");
+      return;
+    }
+    setAnlegenFehler("");
+    try {
+      await ladeJson("/api/fensterbauer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(neu),
+      });
+      setNeu({ ...LEERES_KONTAKT_FORMULAR, kuerzel: "" });
+      laden();
+    } catch (fehler) {
+      setAnlegenFehler(fehler.message);
+    }
   }
 
   function feldAendern(feld) {
@@ -782,6 +804,7 @@ function Fensterbauerverwaltung({ aufSpringeZuVorgang }) {
         <input type="text" placeholder="Bemerkungen" value={neu.bemerkungen} onChange={feldAendern("bemerkungen")} />
         <button className="aktion" type="submit">Anlegen</button>
       </form>
+      {anlegenFehler && <div className="leer">Fehler: {anlegenFehler}</div>}
 
       <table>
         <thead><tr><th>Firma</th><th>Ansprechpartner</th><th>Ort</th><th>Telefon</th><th>E-Mail</th><th>Aktiv</th></tr></thead>
