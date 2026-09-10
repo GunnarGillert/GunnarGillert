@@ -976,6 +976,7 @@ function Rechnungsverwaltung({ aufSpringeZuVorgang }) {
   const [anlegenLaeuft, setAnlegenLaeuft] = useState(false);
   const [neuerArtikel, setNeuerArtikel] = useState({ artikelNr: "", bezeichnung: "", einheit: "", einzelpreis: "" });
   const [artikelFehler, setArtikelFehler] = useState("");
+  const [bearbeiteRechnungId, setBearbeiteRechnungId] = useState(null);
 
   const laden = useCallback(() => {
     ladeJson("/api/rechnungen").then(setRechnungen).catch(() => {});
@@ -1058,11 +1059,21 @@ function Rechnungsverwaltung({ aufSpringeZuVorgang }) {
     setAnlegenFehler("");
     setAnlegenLaeuft(true);
     try {
-      await ladeJson("/api/rechnungen", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(neu),
-      });
+      if (bearbeiteRechnungId) {
+        const { vorgangId, ...aenderbar } = neu;
+        await ladeJson(`/api/rechnungen/${bearbeiteRechnungId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(aenderbar),
+        });
+        setBearbeiteRechnungId(null);
+      } else {
+        await ladeJson("/api/rechnungen", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(neu),
+        });
+      }
       setNeu({
         vorgangId: "", typ: "Energieberatung", belegdatum: new Date().toISOString().slice(0, 10),
         mwstSatz: 19, positionen: [{ ...LEERE_RECHNUNGSPOSITION }],
@@ -1073,6 +1084,25 @@ function Rechnungsverwaltung({ aufSpringeZuVorgang }) {
     } finally {
       setAnlegenLaeuft(false);
     }
+  }
+
+  function bearbeitenStarten(r) {
+    setBearbeiteRechnungId(r.id);
+    setNeu({
+      vorgangId: r.vorgangId, typ: r.typ, belegdatum: r.belegdatum,
+      mwstSatz: r.mwstSatz, positionen: r.positionen.map((p) => ({ ...p })),
+    });
+    setAnlegenFehler("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function bearbeitenAbbrechen() {
+    setBearbeiteRechnungId(null);
+    setNeu({
+      vorgangId: "", typ: "Energieberatung", belegdatum: new Date().toISOString().slice(0, 10),
+      mwstSatz: 19, positionen: [{ ...LEERE_RECHNUNGSPOSITION }],
+    });
+    setAnlegenFehler("");
   }
 
   async function zahlungsstatusUmschalten(rechnung) {
@@ -1107,12 +1137,12 @@ function Rechnungsverwaltung({ aufSpringeZuVorgang }) {
   return (
     <div>
       <div className="karte-panel">
-        <h3>Neue Rechnung</h3>
+        <h3>{bearbeiteRechnungId ? "Rechnung bearbeiten" : "Neue Rechnung"}</h3>
         <form onSubmit={anlegen}>
           <div className="feld-zeile">
             <div className="feld">
               <div className="label">Auftrag</div>
-              <select value={neu.vorgangId} onChange={(e) => setNeu({ ...neu, vorgangId: e.target.value })}>
+              <select value={neu.vorgangId} onChange={(e) => setNeu({ ...neu, vorgangId: e.target.value })} disabled={Boolean(bearbeiteRechnungId)}>
                 <option value="">Auftrag wählen …</option>
                 {vorgaenge.map((v) => <option value={v.id} key={v.id}>{v.id} — {v.kundeName}</option>)}
               </select>
@@ -1192,8 +1222,11 @@ function Rechnungsverwaltung({ aufSpringeZuVorgang }) {
           </p>
 
           <button className="aktion" type="submit" disabled={anlegenLaeuft}>
-            {anlegenLaeuft ? "Wird erstellt …" : "Rechnung erstellen"}
+            {anlegenLaeuft ? "Wird gespeichert …" : (bearbeiteRechnungId ? "Änderungen speichern" : "Rechnung erstellen")}
           </button>
+          {bearbeiteRechnungId && (
+            <button type="button" className="aktion sekundaer" onClick={bearbeitenAbbrechen}>Abbrechen</button>
+          )}
         </form>
         {anlegenFehler && <div className="leer">Fehler: {anlegenFehler}</div>}
       </div>
@@ -1282,6 +1315,9 @@ function Rechnungsverwaltung({ aufSpringeZuVorgang }) {
                 </span>
               </td>
               <td>
+                <button className="aktion sekundaer" style={{ padding: "2px 8px", fontSize: 12, margin: "0 4px 0 0" }} onClick={() => bearbeitenStarten(r)}>
+                  Bearbeiten
+                </button>
                 <button className="aktion gefahr" style={{ padding: "2px 8px", fontSize: 12, margin: 0 }} onClick={() => loeschen(r.id, r.belegnummer)}>
                   Löschen
                 </button>

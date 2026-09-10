@@ -1443,6 +1443,35 @@ app.delete("/api/artikel/:id", async (req, res) => {
 // Rechnungen (z. B. vom Fensterbauer) abgelegt, hier wird eine EIGENE
 // Rechnung erzeugt und als PDF ausgegeben.
 // ----------------------------------------------------------------------------
+// Gemeinsame Validierung/Berechnung für POST (Anlegen) und PATCH
+// (Bearbeiten) einer Rechnung, damit beide Routen exakt dieselben Regeln
+// und Rundungen verwenden.
+function validierePositionen(positionen) {
+  if (!Array.isArray(positionen) || positionen.length === 0) {
+    return "Mindestens eine Position ist erforderlich.";
+  }
+  for (const pos of positionen) {
+    if (!pos.leistung || !(Number(pos.menge) > 0) || !(Number(pos.einzelpreis) >= 0)) {
+      return "Jede Position braucht eine Leistung, eine Menge > 0 und einen Einzelpreis.";
+    }
+  }
+  return null;
+}
+
+function berechnePositionen(positionen, mwstSatz) {
+  const positionenBereinigt = positionen.map((pos) => ({
+    menge: Number(pos.menge),
+    einheit: String(pos.einheit || "").trim(),
+    artikelNr: String(pos.artikelNr || "").trim(),
+    leistung: String(pos.leistung).trim(),
+    einzelpreis: Number(pos.einzelpreis),
+  }));
+  const summeNetto = Math.round(positionenBereinigt.reduce((s, p) => s + p.menge * p.einzelpreis, 0) * 100) / 100;
+  const mwstBetrag = Math.round(summeNetto * (mwstSatz / 100) * 100) / 100;
+  const endbetrag = Math.round((summeNetto + mwstBetrag) * 100) / 100;
+  return { positionenBereinigt, summeNetto, mwstBetrag, endbetrag };
+}
+
 app.get("/api/rechnungen", async (req, res) => {
   const vorgangId = String(req.query.vorgangId || "");
   const alle = await leseAlle(RECHNUNGEN_DIR);
@@ -1461,14 +1490,8 @@ app.post("/api/rechnungen", async (req, res) => {
   const { vorgangId, typ, belegdatum, mwstSatz, positionen } = req.body;
   if (!vorgangId) return res.status(400).json({ fehler: "Vorgang ist Pflichtfeld." });
   if (!["Lieferant", "Energieberatung"].includes(typ)) return res.status(400).json({ fehler: "Rechnungsart muss \"Lieferant\" oder \"Energieberatung\" sein." });
-  if (!Array.isArray(positionen) || positionen.length === 0) {
-    return res.status(400).json({ fehler: "Mindestens eine Position ist erforderlich." });
-  }
-  for (const pos of positionen) {
-    if (!pos.leistung || !(Number(pos.menge) > 0) || !(Number(pos.einzelpreis) >= 0)) {
-      return res.status(400).json({ fehler: "Jede Position braucht eine Leistung, eine Menge > 0 und einen Einzelpreis." });
-    }
-  }
+  const positionenFehler = validierePositionen(positionen);
+  if (positionenFehler) return res.status(400).json({ fehler: positionenFehler });
 
   const v = await leseEins(VORGAENGE_DIR, vorgangId);
   if (!v) return res.status(404).json({ fehler: "Vorgang nicht gefunden." });
@@ -1477,17 +1500,7 @@ app.post("/api/rechnungen", async (req, res) => {
 
   const belegdatumGueltig = belegdatum && /^\d{4}-\d{2}-\d{2}$/.test(belegdatum) ? belegdatum : new Date().toISOString().slice(0, 10);
   const mwstSatzGueltig = Number.isFinite(Number(mwstSatz)) ? Number(mwstSatz) : 19;
-
-  const positionenBereinigt = positionen.map((pos) => ({
-    menge: Number(pos.menge),
-    einheit: String(pos.einheit || "").trim(),
-    artikelNr: String(pos.artikelNr || "").trim(),
-    leistung: String(pos.leistung).trim(),
-    einzelpreis: Number(pos.einzelpreis),
-  }));
-  const summeNetto = Math.round(positionenBereinigt.reduce((s, p) => s + p.menge * p.einzelpreis, 0) * 100) / 100;
-  const mwstBetrag = Math.round(summeNetto * (mwstSatzGueltig / 100) * 100) / 100;
-  const endbetrag = Math.round((summeNetto + mwstBetrag) * 100) / 100;
+  const { positionenBereinigt, summeNetto, mwstBetrag, endbetrag } = berechnePositionen(positionen, mwstSatzGueltig);
 
   // "Der Rechnungsbetrag ist innerhalb 10 Tagen ohne Abzug zahlbar." -
   // Fälligkeit wird aus dieser festen Zahlungsfrist berechnet, nicht
@@ -1521,25 +1534,68 @@ app.post("/api/rechnungen", async (req, res) => {
   res.status(201).json(rechnung);
 });
 
+// Bearbeiten einer bereits erstellten Rechnung: Zahlungsstatus wie bisher
+// (Klick auf den Badge im Reiter "Rechnungen"), zusätzlich lassen sich
+// Rechnungsart, Belegdatum, MwSt-Satz und Positionen nachträglich ändern
+// (z. B. Tippfehler oder eine vergessene Position korrigieren). Die
+// Belegnummer und der zugehörige Vorgang selbst bleiben dabei fest -
+// eine Rechnung "umzuhängen" ist kein unterstützter Anwendungsfall.
 app.patch("/api/rechnungen/:id", async (req, res) => {
   const r = await leseEins(RECHNUNGEN_DIR, req.params.id);
   if (!r) return res.status(404).json({ fehler: "Rechnung nicht gefunden." });
-  const { zahlungsstatus } = req.body;
-  if (!["offen", "bezahlt"].includes(zahlungsstatus)) return res.status(400).json({ fehler: "Ungültiger Zahlungsstatus." });
-  r.zahlungsstatus = zahlungsstatus;
+  const { typ, belegdatum, mwstSatz, positionen, zahlungsstatus } = req.body;
+  const inhaltWurdeGeaendert = typ !== undefined || belegdatum !== undefined || mwstSatz !== undefined || positionen !== undefined;
+
+  if (typ !== undefined) {
+    if (!["Lieferant", "Energieberatung"].includes(typ)) return res.status(400).json({ fehler: "Rechnungsart muss \"Lieferant\" oder \"Energieberatung\" sein." });
+    r.typ = typ;
+  }
+  if (belegdatum !== undefined) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(belegdatum)) return res.status(400).json({ fehler: "Ungültiges Belegdatum." });
+    r.belegdatum = belegdatum;
+    const faelligkeitsdatum = new Date(belegdatum);
+    faelligkeitsdatum.setDate(faelligkeitsdatum.getDate() + 10);
+    r.faelligkeitsdatum = faelligkeitsdatum.toISOString().slice(0, 10);
+  }
+  if (mwstSatz !== undefined) {
+    if (!Number.isFinite(Number(mwstSatz))) return res.status(400).json({ fehler: "MwSt-Satz muss eine Zahl sein." });
+    r.mwstSatz = Number(mwstSatz);
+  }
+  if (positionen !== undefined) {
+    const positionenFehler = validierePositionen(positionen);
+    if (positionenFehler) return res.status(400).json({ fehler: positionenFehler });
+  }
+  if (positionen !== undefined || mwstSatz !== undefined) {
+    const { positionenBereinigt, summeNetto, mwstBetrag, endbetrag } = berechnePositionen(positionen !== undefined ? positionen : r.positionen, r.mwstSatz);
+    r.positionen = positionenBereinigt;
+    r.summeNetto = summeNetto;
+    r.mwstBetrag = mwstBetrag;
+    r.endbetrag = endbetrag;
+  }
+  if (zahlungsstatus !== undefined) {
+    if (!["offen", "bezahlt"].includes(zahlungsstatus)) return res.status(400).json({ fehler: "Ungültiger Zahlungsstatus." });
+    r.zahlungsstatus = zahlungsstatus;
+  }
   await schreibe(RECHNUNGEN_DIR, r.id, r);
 
-  // Spiegelt den Status auch an der Rechnungsübersicht des Vorgangs
-  // (neu aus ALLEN Rechnungen des Vorgangs ermittelt, nicht nur dieser
-  // einen - siehe aktualisiereRechnungsUebersicht).
+  // Spiegelt Betrag/Fälligkeit/Zahlungsstatus auch an der
+  // Rechnungsübersicht des Vorgangs (neu aus ALLEN Rechnungen des
+  // Vorgangs ermittelt, nicht nur dieser einen - siehe
+  // aktualisiereRechnungsUebersicht).
   const v = await leseEins(VORGAENGE_DIR, r.vorgangId);
   if (v) {
     await aktualisiereRechnungsUebersicht(v);
-    v.historie.push({
-      wer: "Sachbearbeiter",
-      was: `Zahlungsstatus der Rechnung "${r.belegnummer}" geändert zu "${zahlungsstatus}"`,
-      wann: new Date().toISOString().slice(0, 10),
-    });
+    const heute = new Date().toISOString().slice(0, 10);
+    if (zahlungsstatus !== undefined) {
+      v.historie.push({ wer: "Sachbearbeiter", was: `Zahlungsstatus der Rechnung "${r.belegnummer}" geändert zu "${zahlungsstatus}"`, wann: heute });
+    }
+    if (inhaltWurdeGeaendert) {
+      v.historie.push({
+        wer: "Sachbearbeiter",
+        was: `Rechnung "${r.belegnummer}" bearbeitet (Betrag jetzt ${fmt2(r.endbetrag)} EUR, fällig am ${formatDatumDe(r.faelligkeitsdatum)})`,
+        wann: heute,
+      });
+    }
     await schreibe(VORGAENGE_DIR, v.id, v);
   }
   res.json(r);
