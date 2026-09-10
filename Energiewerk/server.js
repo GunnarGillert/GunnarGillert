@@ -1033,6 +1033,24 @@ app.patch("/api/vorgaenge/:id/uwert-pruefung", async (req, res) => {
 app.delete("/api/vorgaenge/:id", async (req, res) => {
   const v = await leseEins(VORGAENGE_DIR, req.params.id);
   if (!v) return res.status(404).json({ fehler: "Vorgang nicht gefunden." });
+
+  // Selbst erstellte Rechnungen (Reiter "Rechnungen") dürfen nicht einfach
+  // stillschweigend mit dem Vorgang verschwinden, solange noch offene
+  // (unbezahlte) dabei sind - sonst verliert man den Überblick über noch
+  // ausstehende Zahlungen. Sind alle bezahlt (oder existieren keine),
+  // werden sie zusammen mit dem Vorgang gelöscht (analog zu den
+  // hochgeladenen Unterlagen weiter unten) statt als Karteileichen mit
+  // ungültiger vorgangId liegen zu bleiben.
+  const rechnungenDesVorgangs = (await leseAlle(RECHNUNGEN_DIR)).filter((r) => r.vorgangId === v.id);
+  const offeneRechnungen = rechnungenDesVorgangs.filter((r) => r.zahlungsstatus !== "bezahlt");
+  if (offeneRechnungen.length > 0) {
+    return res.status(400).json({
+      fehler: `Vorgang hat noch ${offeneRechnungen.length === 1 ? "eine offene Rechnung" : `${offeneRechnungen.length} offene Rechnungen`} ` +
+        `(${offeneRechnungen.map((r) => r.belegnummer).join(", ")}) - diese zuerst im Reiter "Rechnungen" als bezahlt markieren oder löschen.`,
+    });
+  }
+  for (const r of rechnungenDesVorgangs) await loesche(RECHNUNGEN_DIR, r.id);
+
   await loesche(VORGAENGE_DIR, v.id);
   await fsp.rm(path.join(DOKUMENTE_DIR, v.id), { recursive: true, force: true });
   res.status(204).end();

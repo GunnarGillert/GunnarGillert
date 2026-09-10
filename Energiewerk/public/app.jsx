@@ -259,7 +259,7 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen, startVorgangId,
   }
 
   async function vorgangLoeschen() {
-    if (!window.confirm(`Vorgang "${ausgewaehlterVorgang.id}" wirklich unwiderruflich löschen? Alle hochgeladenen Unterlagen werden mit gelöscht.`)) return;
+    if (!window.confirm(`Vorgang "${ausgewaehlterVorgang.id}" wirklich unwiderruflich löschen? Alle hochgeladenen Unterlagen und bereits bezahlte Rechnungen werden mit gelöscht (noch offene Rechnungen verhindern das Löschen).`)) return;
     try {
       await ladeJson(`/api/vorgaenge/${ausgewaehlterVorgang.id}`, { method: "DELETE" });
       setAusgewaehlterVorgang(null);
