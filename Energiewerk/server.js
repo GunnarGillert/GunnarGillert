@@ -37,6 +37,18 @@ if (process.env.TRUST_PROXY === "1") app.set("trust proxy", 1);
 
 app.use(express.json({ limit: "5mb" }));
 
+// API-Antworten NIE vom Browser cachen lassen. Express setzt für res.json()
+// standardmäßig einen ETag, aber weder Cache-Control noch Expires - manche
+// Browser wenden darauf trotzdem eine heuristische Zwischenspeicherung an,
+// sodass z. B. /api/dokumenttypen nach einer Server-Aktualisierung noch
+// eine ältere, im Browser gecachte Liste zeigt, obwohl bundle.js/index.html
+// (die explizit "no-cache" gesetzt bekommen, siehe unten) bereits aktuell
+// sind - genau dieses widersprüchliche Bild wurde einmal live beobachtet.
+app.use("/api", (req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 // Protokolliert jede Anfrage (Methode, Pfad, Status, Dauer) in debug.log -
 // damit sich ein gemeldetes Problem nachvollziehen lässt, ohne dass jemand
 // die Browser-Entwicklerkonsole öffnen oder den Netzwerk-Tab mitschneiden
@@ -269,6 +281,20 @@ function erkenneDokumenttyp(dateiname) {
 
 function sichererDateiname(dateiname) {
   return dateiname.replace(/[^A-Za-z0-9._äöüÄÖÜß -]/g, "_");
+}
+
+// multer/busboy parsen den Dateinamen aus dem multipart/form-data-Header
+// IMMER als Latin-1 (unabhängig davon, dass Browser die eigentlichen Bytes
+// als UTF-8 schicken) - bei Umlauten im Dateinamen entsteht dadurch
+// Mojibake wie "HaustÃ¼r" statt "Haustür". Die Bytes als Latin-1 zu lesen
+// und als UTF-8 neu zu interpretieren kehrt genau das um; für reine
+// ASCII-Dateinamen ist das ein No-op (identische Bytes in beiden Kodierungen).
+function korrigiereDateinameKodierung(dateiname) {
+  try {
+    return Buffer.from(dateiname, "latin1").toString("utf8");
+  } catch {
+    return dateiname;
+  }
 }
 
 function mitZeitlimit(promise, ms, fehlermeldung) {
@@ -813,6 +839,7 @@ app.post("/api/vorgaenge/:id/dokumente", upload.single("datei"), async (req, res
   const v = await leseEins(VORGAENGE_DIR, req.params.id);
   if (!v) return res.status(404).json({ fehler: "Vorgang nicht gefunden." });
   if (!req.file) return res.status(400).json({ fehler: "Keine Datei empfangen." });
+  req.file.originalname = korrigiereDateinameKodierung(req.file.originalname);
 
   const dokumentId = crypto.randomUUID();
   const heute = new Date().toISOString().slice(0, 10);
@@ -1033,6 +1060,7 @@ app.get("/api/einstellungen/merkblatt", async (req, res) => {
 
 app.post("/api/einstellungen/merkblatt", upload.single("datei"), async (req, res) => {
   if (!req.file) return res.status(400).json({ fehler: "Keine Datei empfangen." });
+  req.file.originalname = korrigiereDateinameKodierung(req.file.originalname);
   if (!req.file.originalname.toLowerCase().endsWith(".pdf")) {
     return res.status(400).json({ fehler: "Das Merkblatt muss ein PDF sein." });
   }
