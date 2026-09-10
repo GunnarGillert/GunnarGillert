@@ -246,7 +246,8 @@ function enthaeltText(werte, suchtext) {
 // ----------------------------------------------------------------------------
 const DOKUMENTTYPEN = [
   "Angebot", "Antrag", "Technische Projektbeschreibung (TPB)", "Technischer Projektnachweis (TPN)",
-  "Vollmacht", "U-Wert-Nachweis", "Zuwendungsbescheid", "Bescheid", "Rechnung",
+  "Vollmacht", "U-Wert-Nachweis", "Zuwendungsbescheid", "Bescheid",
+  "Rechnung Lieferant", "Rechnung Energieberatung",
   "Zahlungsnachweis", "Verwendungsnachweis", "Festsetzungsbescheid", "Sonstiges",
 ];
 
@@ -260,6 +261,15 @@ const ERKENNUNGS_REIHENFOLGE = [
   ["uwert-nachweis", "U-Wert-Nachweis"],
   ["uwertnachweis", "U-Wert-Nachweis"],
   ["u_wert_nachweis", "U-Wert-Nachweis"],
+  ["rechnung_lieferant", "Rechnung Lieferant"],
+  ["rechnung-lieferant", "Rechnung Lieferant"],
+  ["rechnung lieferant", "Rechnung Lieferant"],
+  ["lieferantenrechnung", "Rechnung Lieferant"],
+  ["rechnung_energieberatung", "Rechnung Energieberatung"],
+  ["rechnung-energieberatung", "Rechnung Energieberatung"],
+  ["rechnung energieberatung", "Rechnung Energieberatung"],
+  ["energieberatungsrechnung", "Rechnung Energieberatung"],
+  ["energieberaterrechnung", "Rechnung Energieberatung"],
   ["projektbeschreibung", "Technische Projektbeschreibung (TPB)"],
   ["projektnachweis", "Technischer Projektnachweis (TPN)"],
   ["tpb", "Technische Projektbeschreibung (TPB)"],
@@ -268,7 +278,6 @@ const ERKENNUNGS_REIHENFOLGE = [
   ["angebot", "Angebot"],
   ["antrag", "Antrag"],
   ["bescheid", "Bescheid"],
-  ["rechnung", "Rechnung"],
 ];
 
 function erkenneDokumenttyp(dateiname) {
