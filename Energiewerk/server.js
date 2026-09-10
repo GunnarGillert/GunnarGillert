@@ -72,13 +72,14 @@ const KUNDEN_DIR = path.join(COLLECTIONS_DIR, "kunden");
 const VORGAENGE_DIR = path.join(COLLECTIONS_DIR, "vorgaenge");
 const DOKUMENTE_DIR = path.join(COLLECTIONS_DIR, "dokumente");
 const RECHNUNGEN_DIR = path.join(COLLECTIONS_DIR, "rechnungen");
+const ARTIKEL_DIR = path.join(COLLECTIONS_DIR, "artikel");
 const LOGS_DIR = path.join(DATA_DIR, "logs");
 const DEBUG_LOG_PATH = path.join(LOGS_DIR, "debug.log");
 const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
 const MERKBLATT_DIR = path.join(DATA_DIR, "merkblatt");
 const MERKBLATT_DATEI = path.join(MERKBLATT_DIR, "merkblatt.pdf");
 
-for (const dir of [DATA_DIR, COLLECTIONS_DIR, FENSTERBAUER_DIR, KUNDEN_DIR, VORGAENGE_DIR, DOKUMENTE_DIR, RECHNUNGEN_DIR, LOGS_DIR, MERKBLATT_DIR]) {
+for (const dir of [DATA_DIR, COLLECTIONS_DIR, FENSTERBAUER_DIR, KUNDEN_DIR, VORGAENGE_DIR, DOKUMENTE_DIR, RECHNUNGEN_DIR, ARTIKEL_DIR, LOGS_DIR, MERKBLATT_DIR]) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
@@ -1363,6 +1364,58 @@ async function erzeugeRechnungPdf({ rechnung, vorgang, kunde, einstellungen }) {
 
   return Buffer.from(await pdfDoc.save());
 }
+
+// ----------------------------------------------------------------------------
+// API: Artikelliste - Stammdaten (Artikel-Nr., Bezeichnung, Einheit,
+// Einzelpreis), damit sich Positionen einer selbst erstellten Rechnung
+// (siehe unten) per Auswahl statt manueller Eingabe schnell ausfüllen
+// lassen.
+// ----------------------------------------------------------------------------
+app.get("/api/artikel", async (req, res) => {
+  const alle = await leseAlle(ARTIKEL_DIR);
+  alle.sort((a, b) => (a.artikelNr || "").localeCompare(b.artikelNr || "") || a.bezeichnung.localeCompare(b.bezeichnung));
+  res.json(alle);
+});
+
+app.post("/api/artikel", async (req, res) => {
+  const { artikelNr, bezeichnung, einheit, einzelpreis } = req.body;
+  if (!bezeichnung || !String(bezeichnung).trim()) return res.status(400).json({ fehler: "Bezeichnung ist Pflichtfeld." });
+  if (!(Number(einzelpreis) >= 0)) return res.status(400).json({ fehler: "Einzelpreis muss eine Zahl ≥ 0 sein." });
+  const a = {
+    id: crypto.randomUUID(),
+    artikelNr: String(artikelNr || "").trim(),
+    bezeichnung: String(bezeichnung).trim(),
+    einheit: String(einheit || "").trim(),
+    einzelpreis: Number(einzelpreis),
+  };
+  await schreibe(ARTIKEL_DIR, a.id, a);
+  res.status(201).json(a);
+});
+
+app.patch("/api/artikel/:id", async (req, res) => {
+  const a = await leseEins(ARTIKEL_DIR, req.params.id);
+  if (!a) return res.status(404).json({ fehler: "Artikel nicht gefunden." });
+  const { artikelNr, bezeichnung, einheit, einzelpreis } = req.body;
+  if (bezeichnung !== undefined) {
+    if (!String(bezeichnung).trim()) return res.status(400).json({ fehler: "Bezeichnung darf nicht leer sein." });
+    a.bezeichnung = String(bezeichnung).trim();
+  }
+  if (einzelpreis !== undefined) {
+    if (!(Number(einzelpreis) >= 0)) return res.status(400).json({ fehler: "Einzelpreis muss eine Zahl ≥ 0 sein." });
+    a.einzelpreis = Number(einzelpreis);
+  }
+  if (artikelNr !== undefined) a.artikelNr = String(artikelNr).trim();
+  if (einheit !== undefined) a.einheit = String(einheit).trim();
+  await schreibe(ARTIKEL_DIR, a.id, a);
+  res.json(a);
+});
+
+app.delete("/api/artikel/:id", async (req, res) => {
+  const a = await leseEins(ARTIKEL_DIR, req.params.id);
+  if (!a) return res.status(404).json({ fehler: "Artikel nicht gefunden." });
+  await loesche(ARTIKEL_DIR, a.id);
+  res.status(204).end();
+});
 
 // ----------------------------------------------------------------------------
 // API: Rechnungen (selbst erstellte Rechnungen, z. B. Energieberatung an den

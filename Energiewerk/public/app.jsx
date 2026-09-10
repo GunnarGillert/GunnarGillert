@@ -967,18 +967,26 @@ const LEERE_RECHNUNGSPOSITION = { menge: 1, einheit: "", artikelNr: "", leistung
 function Rechnungsverwaltung({ aufSpringeZuVorgang }) {
   const [rechnungen, setRechnungen] = useState([]);
   const [vorgaenge, setVorgaenge] = useState([]);
+  const [artikelListe, setArtikelListe] = useState([]);
   const [neu, setNeu] = useState({
     vorgangId: "", typ: "Energieberatung", belegdatum: new Date().toISOString().slice(0, 10),
     mwstSatz: 19, positionen: [{ ...LEERE_RECHNUNGSPOSITION }],
   });
   const [anlegenFehler, setAnlegenFehler] = useState("");
   const [anlegenLaeuft, setAnlegenLaeuft] = useState(false);
+  const [neuerArtikel, setNeuerArtikel] = useState({ artikelNr: "", bezeichnung: "", einheit: "", einzelpreis: "" });
+  const [artikelFehler, setArtikelFehler] = useState("");
 
   const laden = useCallback(() => {
     ladeJson("/api/rechnungen").then(setRechnungen).catch(() => {});
   }, []);
   useEffect(() => { laden(); }, [laden]);
   useEffect(() => { ladeJson("/api/vorgaenge").then(setVorgaenge).catch(() => {}); }, []);
+
+  const artikelLaden = useCallback(() => {
+    ladeJson("/api/artikel").then(setArtikelListe).catch(() => {});
+  }, []);
+  useEffect(() => { artikelLaden(); }, [artikelLaden]);
 
   function positionAendern(index, feld, wert) {
     setNeu((vorher) => ({
@@ -991,6 +999,50 @@ function Rechnungsverwaltung({ aufSpringeZuVorgang }) {
   }
   function positionEntfernen(index) {
     setNeu((vorher) => ({ ...vorher, positionen: vorher.positionen.filter((_, i) => i !== index) }));
+  }
+  function artikelUebernehmen(index, artikelId) {
+    const artikel = artikelListe.find((a) => a.id === artikelId);
+    if (!artikel) return;
+    setNeu((vorher) => ({
+      ...vorher,
+      positionen: vorher.positionen.map((p, i) => (i === index ? {
+        ...p,
+        artikelNr: artikel.artikelNr,
+        leistung: artikel.bezeichnung,
+        einheit: artikel.einheit,
+        einzelpreis: artikel.einzelpreis,
+      } : p)),
+    }));
+  }
+
+  async function artikelAnlegen(e) {
+    e.preventDefault();
+    if (!neuerArtikel.bezeichnung.trim()) {
+      setArtikelFehler("Bezeichnung ist Pflichtfeld.");
+      return;
+    }
+    setArtikelFehler("");
+    try {
+      await ladeJson("/api/artikel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...neuerArtikel, einzelpreis: Number(neuerArtikel.einzelpreis) || 0 }),
+      });
+      setNeuerArtikel({ artikelNr: "", bezeichnung: "", einheit: "", einzelpreis: "" });
+      artikelLaden();
+    } catch (fehler) {
+      setArtikelFehler(fehler.message);
+    }
+  }
+
+  async function artikelLoeschen(id, bezeichnung) {
+    if (!window.confirm(`Artikel "${bezeichnung}" wirklich löschen?`)) return;
+    try {
+      await ladeJson(`/api/artikel/${id}`, { method: "DELETE" });
+      artikelLaden();
+    } catch (fehler) {
+      window.alert("Fehler beim Löschen: " + fehler.message);
+    }
   }
 
   const summeNetto = neu.positionen.reduce((s, p) => s + (Number(p.menge) || 0) * (Number(p.einzelpreis) || 0), 0);
@@ -1085,6 +1137,17 @@ function Rechnungsverwaltung({ aufSpringeZuVorgang }) {
           <div className="label" style={{ marginTop: 10, marginBottom: 4 }}>Positionen</div>
           {neu.positionen.map((pos, i) => (
             <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6, alignItems: "flex-end" }}>
+              {artikelListe.length > 0 && (
+                <div className="feld" style={{ width: 190 }}>
+                  <div className="label">Artikel übernehmen</div>
+                  <select value="" onChange={(e) => e.target.value && artikelUebernehmen(i, e.target.value)}>
+                    <option value="">Artikel wählen …</option>
+                    {artikelListe.map((a) => (
+                      <option value={a.id} key={a.id}>{a.artikelNr ? `${a.artikelNr} — ${a.bezeichnung}` : a.bezeichnung}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="feld" style={{ width: 64 }}>
                 <div className="label">Menge</div>
                 <input type="number" min="0" step="0.01" value={pos.menge} onChange={(e) => positionAendern(i, "menge", e.target.value)} />
@@ -1133,6 +1196,59 @@ function Rechnungsverwaltung({ aufSpringeZuVorgang }) {
           </button>
         </form>
         {anlegenFehler && <div className="leer">Fehler: {anlegenFehler}</div>}
+      </div>
+
+      <div className="karte-panel">
+        <h3>Artikelliste</h3>
+        <p style={{ color: "#5c6b66", fontSize: 12.5, marginTop: -6, marginBottom: 10 }}>
+          Häufig verwendete Artikel/Leistungen mit Preis - über "Artikel übernehmen" bei einer Position oben
+          schnell in eine Rechnung übernehmbar.
+        </p>
+        <form onSubmit={artikelAnlegen} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 12 }}>
+          <div className="feld" style={{ width: 90 }}>
+            <div className="label">Artikel-Nr.</div>
+            <input type="text" value={neuerArtikel.artikelNr} onChange={(e) => setNeuerArtikel({ ...neuerArtikel, artikelNr: e.target.value })} />
+          </div>
+          <div className="feld" style={{ flex: 1, minWidth: 220 }}>
+            <div className="label">Bezeichnung</div>
+            <input type="text" value={neuerArtikel.bezeichnung} onChange={(e) => setNeuerArtikel({ ...neuerArtikel, bezeichnung: e.target.value })} />
+          </div>
+          <div className="feld" style={{ width: 70 }}>
+            <div className="label">Einheit</div>
+            <input type="text" placeholder="Stk" value={neuerArtikel.einheit} onChange={(e) => setNeuerArtikel({ ...neuerArtikel, einheit: e.target.value })} />
+          </div>
+          <div className="feld" style={{ width: 110 }}>
+            <div className="label">Einzelpreis (EUR)</div>
+            <input type="number" min="0" step="0.01" value={neuerArtikel.einzelpreis} onChange={(e) => setNeuerArtikel({ ...neuerArtikel, einzelpreis: e.target.value })} />
+          </div>
+          <button className="aktion sekundaer" type="submit" style={{ margin: 0 }}>+ Artikel hinzufügen</button>
+        </form>
+        {artikelFehler && <div className="leer">Fehler: {artikelFehler}</div>}
+
+        {artikelListe.length === 0 ? (
+          <div className="leer">Noch keine Artikel hinterlegt.</div>
+        ) : (
+          <table>
+            <thead>
+              <tr><th>Artikel-Nr.</th><th>Bezeichnung</th><th>Einheit</th><th>Einzelpreis</th><th></th></tr>
+            </thead>
+            <tbody>
+              {artikelListe.map((a) => (
+                <tr key={a.id}>
+                  <td>{a.artikelNr}</td>
+                  <td>{a.bezeichnung}</td>
+                  <td>{a.einheit}</td>
+                  <td>{formatEuro(a.einzelpreis)}</td>
+                  <td>
+                    <button className="aktion gefahr" style={{ padding: "2px 8px", fontSize: 12, margin: 0 }} onClick={() => artikelLoeschen(a.id, a.bezeichnung)}>
+                      Löschen
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       <table>
