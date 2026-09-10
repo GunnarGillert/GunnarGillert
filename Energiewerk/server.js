@@ -233,7 +233,8 @@ function enthaeltText(werte, suchtext) {
 // allgemeineren ("bescheid") geprüft werden.
 // ----------------------------------------------------------------------------
 const DOKUMENTTYPEN = [
-  "Angebot", "Antrag", "Vollmacht", "U-Wert-Nachweis", "Bescheid", "Rechnung",
+  "Angebot", "Antrag", "Technische Projektbeschreibung (TPB)", "Technischer Projektnachweis (TPN)",
+  "Vollmacht", "U-Wert-Nachweis", "Bescheid", "Rechnung",
   "Zahlungsnachweis", "Verwendungsnachweis", "Festsetzungsbescheid", "Sonstiges",
 ];
 
@@ -247,7 +248,10 @@ const ERKENNUNGS_REIHENFOLGE = [
   ["uwert-nachweis", "U-Wert-Nachweis"],
   ["uwertnachweis", "U-Wert-Nachweis"],
   ["u_wert_nachweis", "U-Wert-Nachweis"],
-  ["projektbeschreibung", "Antrag"],
+  ["projektbeschreibung", "Technische Projektbeschreibung (TPB)"],
+  ["projektnachweis", "Technischer Projektnachweis (TPN)"],
+  ["tpb", "Technische Projektbeschreibung (TPB)"],
+  ["tpn", "Technischer Projektnachweis (TPN)"],
   ["vollmacht", "Vollmacht"],
   ["angebot", "Angebot"],
   ["antrag", "Antrag"],
