@@ -181,6 +181,7 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen, startVorgangId,
   const [kundenListe, setKundenListe] = useState([]);
   const [neuerAuftrag, setNeuerAuftrag] = useState({ kundeId: "", bafaVorgangsId: "" });
   const [anlegenFehler, setAnlegenFehler] = useState("");
+  const [rechnungenDesVorgangs, setRechnungenDesVorgangs] = useState([]);
 
   useEffect(() => { ladeJson("/api/dokumenttypen").then(setDokumenttypen).catch(() => {}); }, []);
   useEffect(() => { ladeJson("/api/kunden").then(setKundenListe).catch(() => {}); }, []);
@@ -211,6 +212,7 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen, startVorgangId,
     setBafaSpeichernStatus("");
     setUWertBegruendungEntwurf("");
     setUWertUeberschreibenStatus("");
+    ladeJson(`/api/rechnungen?vorgangId=${id}`).then(setRechnungenDesVorgangs).catch(() => setRechnungenDesVorgangs([]));
   }
 
   useEffect(() => {
@@ -526,6 +528,31 @@ function Auftragsverwaltung({ startFilter, aufFilterUebernommen, startVorgangId,
             )}
             <button className="aktion gefahr" onClick={vorgangLoeschen}>Vorgang löschen</button>
           </div>
+
+          <h3>Rechnungen</h3>
+          {rechnungenDesVorgangs.length === 0 ? (
+            <div className="leer">Noch keine Rechnungen zu diesem Auftrag erstellt (siehe Reiter „Rechnungen").</div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Belegnummer</th><th>Art</th><th>Belegdatum</th><th>Fällig am</th><th>Endbetrag</th><th>Zahlungsstatus</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rechnungenDesVorgangs.map((r) => (
+                  <tr key={r.id}>
+                    <td><a href={`/api/rechnungen/${r.id}/pdf`} target="_blank" rel="noreferrer">{r.belegnummer}</a></td>
+                    <td>{r.typ}</td>
+                    <td>{formatDatum(r.belegdatum)}</td>
+                    <td>{formatDatum(r.faelligkeitsdatum)}</td>
+                    <td>{formatEuro(r.endbetrag)}</td>
+                    <td><span className={`badge ${r.zahlungsstatus === "bezahlt" ? "status" : "unbekannt"}`}>{r.zahlungsstatus}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
 
           <h3>Unterlagen</h3>
           <Dateiablage onDatei={dateiHochladen} hochladeLaeuft={hochladeLaeuft} />
