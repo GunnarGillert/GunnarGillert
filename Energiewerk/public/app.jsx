@@ -930,6 +930,229 @@ function Fensterbauerverwaltung({ aufSpringeZuVorgang }) {
 }
 
 // ----------------------------------------------------------------------------
+// Rechnungsverwaltung - selbst erstellte Rechnungen (z. B. Energieberatung
+// an den Kunden), unabhängig von den unter "Unterlagen" hochgeladenen
+// FREMDEN Rechnungen (Dokumenttypen "Rechnung Lieferant"/"Rechnung
+// Energieberatung").
+// ----------------------------------------------------------------------------
+const LEERE_RECHNUNGSPOSITION = { menge: 1, einheit: "", artikelNr: "", leistung: "", einzelpreis: "" };
+
+function Rechnungsverwaltung({ aufSpringeZuVorgang }) {
+  const [rechnungen, setRechnungen] = useState([]);
+  const [vorgaenge, setVorgaenge] = useState([]);
+  const [neu, setNeu] = useState({
+    vorgangId: "", typ: "Energieberatung", belegdatum: new Date().toISOString().slice(0, 10),
+    mwstSatz: 19, positionen: [{ ...LEERE_RECHNUNGSPOSITION }],
+  });
+  const [anlegenFehler, setAnlegenFehler] = useState("");
+  const [anlegenLaeuft, setAnlegenLaeuft] = useState(false);
+
+  const laden = useCallback(() => {
+    ladeJson("/api/rechnungen").then(setRechnungen).catch(() => {});
+  }, []);
+  useEffect(() => { laden(); }, [laden]);
+  useEffect(() => { ladeJson("/api/vorgaenge").then(setVorgaenge).catch(() => {}); }, []);
+
+  function positionAendern(index, feld, wert) {
+    setNeu((vorher) => ({
+      ...vorher,
+      positionen: vorher.positionen.map((p, i) => (i === index ? { ...p, [feld]: wert } : p)),
+    }));
+  }
+  function positionHinzufuegen() {
+    setNeu((vorher) => ({ ...vorher, positionen: [...vorher.positionen, { ...LEERE_RECHNUNGSPOSITION }] }));
+  }
+  function positionEntfernen(index) {
+    setNeu((vorher) => ({ ...vorher, positionen: vorher.positionen.filter((_, i) => i !== index) }));
+  }
+
+  const summeNetto = neu.positionen.reduce((s, p) => s + (Number(p.menge) || 0) * (Number(p.einzelpreis) || 0), 0);
+  const mwstBetrag = summeNetto * ((Number(neu.mwstSatz) || 0) / 100);
+  const endbetrag = summeNetto + mwstBetrag;
+
+  async function anlegen(e) {
+    e.preventDefault();
+    if (!neu.vorgangId) {
+      setAnlegenFehler("Bitte einen Auftrag auswählen.");
+      return;
+    }
+    setAnlegenFehler("");
+    setAnlegenLaeuft(true);
+    try {
+      await ladeJson("/api/rechnungen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(neu),
+      });
+      setNeu({
+        vorgangId: "", typ: "Energieberatung", belegdatum: new Date().toISOString().slice(0, 10),
+        mwstSatz: 19, positionen: [{ ...LEERE_RECHNUNGSPOSITION }],
+      });
+      laden();
+    } catch (fehler) {
+      setAnlegenFehler(fehler.message);
+    } finally {
+      setAnlegenLaeuft(false);
+    }
+  }
+
+  async function zahlungsstatusUmschalten(rechnung) {
+    const neuerStatus = rechnung.zahlungsstatus === "bezahlt" ? "offen" : "bezahlt";
+    try {
+      await ladeJson(`/api/rechnungen/${rechnung.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ zahlungsstatus: neuerStatus }),
+      });
+      laden();
+    } catch (fehler) {
+      window.alert("Fehler: " + fehler.message);
+    }
+  }
+
+  async function loeschen(id, belegnummer) {
+    if (!window.confirm(`Rechnung "${belegnummer}" wirklich unwiderruflich löschen?`)) return;
+    try {
+      await ladeJson(`/api/rechnungen/${id}`, { method: "DELETE" });
+      laden();
+    } catch (fehler) {
+      window.alert("Fehler beim Löschen: " + fehler.message);
+    }
+  }
+
+  function vorgangLabel(vorgangId) {
+    const v = vorgaenge.find((vv) => vv.id === vorgangId);
+    return v ? `${v.id} — ${v.kundeName}` : vorgangId;
+  }
+
+  return (
+    <div>
+      <div className="karte-panel">
+        <h3>Neue Rechnung</h3>
+        <form onSubmit={anlegen}>
+          <div className="feld-zeile">
+            <div className="feld">
+              <div className="label">Auftrag</div>
+              <select value={neu.vorgangId} onChange={(e) => setNeu({ ...neu, vorgangId: e.target.value })}>
+                <option value="">Auftrag wählen …</option>
+                {vorgaenge.map((v) => <option value={v.id} key={v.id}>{v.id} — {v.kundeName}</option>)}
+              </select>
+            </div>
+            <div className="feld">
+              <div className="label">Rechnungsart</div>
+              <select value={neu.typ} onChange={(e) => setNeu({ ...neu, typ: e.target.value })}>
+                <option value="Energieberatung">Energieberatung</option>
+                <option value="Lieferant">Lieferant</option>
+              </select>
+            </div>
+            <div className="feld">
+              <div className="label">Belegdatum</div>
+              <input type="date" value={neu.belegdatum} onChange={(e) => setNeu({ ...neu, belegdatum: e.target.value })} />
+            </div>
+            <div className="feld">
+              <div className="label">MwSt-Satz (%)</div>
+              <input type="number" min="0" max="100" step="0.5" value={neu.mwstSatz} onChange={(e) => setNeu({ ...neu, mwstSatz: e.target.value })} style={{ width: 80 }} />
+            </div>
+          </div>
+
+          <div className="label" style={{ marginTop: 10, marginBottom: 4 }}>Positionen</div>
+          {neu.positionen.map((pos, i) => (
+            <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6, alignItems: "flex-end" }}>
+              <div className="feld" style={{ width: 64 }}>
+                <div className="label">Menge</div>
+                <input type="number" min="0" step="0.01" value={pos.menge} onChange={(e) => positionAendern(i, "menge", e.target.value)} />
+              </div>
+              <div className="feld" style={{ width: 70 }}>
+                <div className="label">Einheit</div>
+                <input type="text" placeholder="Stk" value={pos.einheit} onChange={(e) => positionAendern(i, "einheit", e.target.value)} />
+              </div>
+              <div className="feld" style={{ width: 90 }}>
+                <div className="label">Artikel-Nr.</div>
+                <input type="text" value={pos.artikelNr} onChange={(e) => positionAendern(i, "artikelNr", e.target.value)} />
+              </div>
+              <div className="feld" style={{ flex: 1, minWidth: 220 }}>
+                <div className="label">Leistung</div>
+                <input type="text" value={pos.leistung} onChange={(e) => positionAendern(i, "leistung", e.target.value)} />
+              </div>
+              <div className="feld" style={{ width: 110 }}>
+                <div className="label">Einzelpreis (EUR)</div>
+                <input type="number" min="0" step="0.01" value={pos.einzelpreis} onChange={(e) => positionAendern(i, "einzelpreis", e.target.value)} />
+              </div>
+              <div className="feld" style={{ width: 100 }}>
+                <div className="label">Gesamtpreis</div>
+                {formatEuro((Number(pos.menge) || 0) * (Number(pos.einzelpreis) || 0))}
+              </div>
+              {neu.positionen.length > 1 && (
+                <button type="button" className="aktion gefahr" style={{ padding: "6px 10px", margin: 0 }} onClick={() => positionEntfernen(i)}>
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+          <button type="button" className="aktion sekundaer" onClick={positionHinzufuegen}>+ Position hinzufügen</button>
+
+          <div className="feld-zeile" style={{ marginTop: 10 }}>
+            <div className="feld"><div className="label">Summe Netto</div>{formatEuro(summeNetto)}</div>
+            <div className="feld"><div className="label">MwSt-Betrag</div>{formatEuro(mwstBetrag)}</div>
+            <div className="feld"><div className="label">Endbetrag</div><strong>{formatEuro(endbetrag)}</strong></div>
+          </div>
+          <p style={{ color: "#5c6b66", fontSize: 12.5, marginBottom: 10 }}>
+            Die Fälligkeit wird automatisch berechnet (Belegdatum + 10 Tage - "Der Rechnungsbetrag ist
+            innerhalb 10 Tagen ohne Abzug zahlbar") und am Auftrag hinterlegt.
+          </p>
+
+          <button className="aktion" type="submit" disabled={anlegenLaeuft}>
+            {anlegenLaeuft ? "Wird erstellt …" : "Rechnung erstellen"}
+          </button>
+        </form>
+        {anlegenFehler && <div className="leer">Fehler: {anlegenFehler}</div>}
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Belegnummer</th><th>Auftrag</th><th>Art</th><th>Belegdatum</th>
+            <th>Fällig am</th><th>Endbetrag</th><th>Zahlungsstatus</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {rechnungen.map((r) => (
+            <tr key={r.id}>
+              <td><a href={`/api/rechnungen/${r.id}/pdf`} target="_blank" rel="noreferrer">{r.belegnummer}</a></td>
+              <td>
+                <span style={{ cursor: "pointer", color: "var(--gruen)", textDecoration: "underline" }} onClick={() => aufSpringeZuVorgang(r.vorgangId)}>
+                  {vorgangLabel(r.vorgangId)}
+                </span>
+              </td>
+              <td>{r.typ}</td>
+              <td>{formatDatum(r.belegdatum)}</td>
+              <td>{formatDatum(r.faelligkeitsdatum)}</td>
+              <td>{formatEuro(r.endbetrag)}</td>
+              <td>
+                <span
+                  className={`badge ${r.zahlungsstatus === "bezahlt" ? "status" : "unbekannt"}`}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => zahlungsstatusUmschalten(r)}
+                  title="Klicken zum Umschalten"
+                >
+                  {r.zahlungsstatus}
+                </span>
+              </td>
+              <td>
+                <button className="aktion gefahr" style={{ padding: "2px 8px", fontSize: 12, margin: 0 }} onClick={() => loeschen(r.id, r.belegnummer)}>
+                  Löschen
+                </button>
+              </td>
+            </tr>
+          ))}
+          {rechnungen.length === 0 && <tr><td colSpan="8" className="leer">Noch keine Rechnungen erstellt.</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
 // Einstellungen
 // ----------------------------------------------------------------------------
 function Einstellungen() {
@@ -945,6 +1168,11 @@ function Einstellungen() {
   const [praefix, setPraefix] = useState("");
   const [naechsteNummer, setNaechsteNummer] = useState("");
   const [auftragsnummerStatus, setAuftragsnummerStatus] = useState("");
+
+  const [firmendaten, setFirmendaten] = useState({ firmenname: "", strasse: "", plz: "", ort: "", ustId: "" });
+  const [rechnungPraefix, setRechnungPraefix] = useState("");
+  const [naechsteRechnungsnummer, setNaechsteRechnungsnummer] = useState("");
+  const [firmendatenStatus, setFirmendatenStatus] = useState("");
 
   const [smtp, setSmtp] = useState({ host: "", port: 465, verschluesselung: "ssl", benutzername: "", absenderName: "", absenderEmail: "" });
   const [smtpPasswort, setSmtpPasswort] = useState("");
@@ -962,6 +1190,9 @@ function Einstellungen() {
       setEinstellungen(e);
       setPraefix(e.fallnummernPraefix);
       setNaechsteNummer(String(e.naechsteFallnummer));
+      setFirmendaten(e.firmendaten);
+      setRechnungPraefix(e.rechnungPraefix);
+      setNaechsteRechnungsnummer(String(e.naechsteRechnungsnummer));
       setSmtp(e.smtp);
       setGithub(e.github);
     }).catch(() => {});
@@ -1026,6 +1257,25 @@ function Einstellungen() {
       laden();
     } catch (fehler) {
       setAuftragsnummerStatus(`Fehler: ${fehler.message}`);
+    }
+  }
+
+  async function firmendatenSpeichern() {
+    setFirmendatenStatus("Speichert …");
+    try {
+      await ladeJson("/api/einstellungen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firmendaten,
+          rechnungPraefix,
+          naechsteRechnungsnummer: parseInt(naechsteRechnungsnummer, 10) || 1,
+        }),
+      });
+      setFirmendatenStatus("Gespeichert.");
+      laden();
+    } catch (fehler) {
+      setFirmendatenStatus(`Fehler: ${fehler.message}`);
     }
   }
 
@@ -1137,6 +1387,47 @@ function Einstellungen() {
         </div>
         <button className="aktion" onClick={auftragsnummerSpeichern}>Speichern</button>
         {auftragsnummerStatus && <div style={{ marginTop: 6, fontSize: 13.5 }}>{auftragsnummerStatus}</div>}
+      </div>
+
+      <div className="karte-panel">
+        <h3>Firmendaten &amp; Rechnungsnummer</h3>
+        <p style={{ color: "#5c6b66", fontSize: 13.5 }}>
+          Absenderangaben für den Briefkopf einer im Reiter „Rechnungen" selbst erstellten Rechnung.
+        </p>
+        <div className="feld-zeile">
+          <div className="feld">
+            <div className="label">Firmenname</div>
+            <input type="text" value={firmendaten.firmenname} onChange={(e) => setFirmendaten({ ...firmendaten, firmenname: e.target.value })} />
+          </div>
+          <div className="feld">
+            <div className="label">Straße</div>
+            <input type="text" value={firmendaten.strasse} onChange={(e) => setFirmendaten({ ...firmendaten, strasse: e.target.value })} />
+          </div>
+          <div className="feld">
+            <div className="label">PLZ</div>
+            <input type="text" value={firmendaten.plz} onChange={(e) => setFirmendaten({ ...firmendaten, plz: e.target.value })} style={{ width: 80 }} />
+          </div>
+          <div className="feld">
+            <div className="label">Ort</div>
+            <input type="text" value={firmendaten.ort} onChange={(e) => setFirmendaten({ ...firmendaten, ort: e.target.value })} />
+          </div>
+          <div className="feld">
+            <div className="label">USt-IdNr.</div>
+            <input type="text" value={firmendaten.ustId} onChange={(e) => setFirmendaten({ ...firmendaten, ustId: e.target.value })} />
+          </div>
+        </div>
+        <div className="feld-zeile">
+          <div className="feld">
+            <div className="label">Rechnungsnummer-Präfix</div>
+            <input type="text" placeholder="RE" value={rechnungPraefix} onChange={(e) => setRechnungPraefix(e.target.value)} style={{ width: 80 }} />
+          </div>
+          <div className="feld">
+            <div className="label">Nächste laufende Nummer</div>
+            <input type="number" min="1" value={naechsteRechnungsnummer} onChange={(e) => setNaechsteRechnungsnummer(e.target.value)} style={{ width: 120 }} />
+          </div>
+        </div>
+        <button className="aktion" onClick={firmendatenSpeichern}>Speichern</button>
+        {firmendatenStatus && <div style={{ marginTop: 6, fontSize: 13.5 }}>{firmendatenStatus}</div>}
       </div>
 
       <div className="karte-panel">
@@ -1259,6 +1550,7 @@ export default function App() {
           ["auftraege", "Aufträge"],
           ["kunden", "Kunden"],
           ["fensterbauer", "Fensterbauer"],
+          ["rechnungen", "Rechnungen"],
           ["einstellungen", "Einstellungen"],
         ].map(([id, label]) => (
           <button
@@ -1282,6 +1574,7 @@ export default function App() {
         )}
         {reiter === "kunden" && <Kundenverwaltung aufSpringeZuVorgang={springeZuVorgang} />}
         {reiter === "fensterbauer" && <Fensterbauerverwaltung aufSpringeZuVorgang={springeZuVorgang} />}
+        {reiter === "rechnungen" && <Rechnungsverwaltung aufSpringeZuVorgang={springeZuVorgang} />}
         {reiter === "einstellungen" && <Einstellungen />}
       </main>
     </div>

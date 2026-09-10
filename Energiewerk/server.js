@@ -22,6 +22,7 @@ const express = require("express");
 require("express-async-errors");
 const multer = require("multer");
 const { PDFParse } = require("pdf-parse");
+const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const { createWorker } = require("tesseract.js");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -70,13 +71,14 @@ const FENSTERBAUER_DIR = path.join(COLLECTIONS_DIR, "fensterbauer");
 const KUNDEN_DIR = path.join(COLLECTIONS_DIR, "kunden");
 const VORGAENGE_DIR = path.join(COLLECTIONS_DIR, "vorgaenge");
 const DOKUMENTE_DIR = path.join(COLLECTIONS_DIR, "dokumente");
+const RECHNUNGEN_DIR = path.join(COLLECTIONS_DIR, "rechnungen");
 const LOGS_DIR = path.join(DATA_DIR, "logs");
 const DEBUG_LOG_PATH = path.join(LOGS_DIR, "debug.log");
 const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
 const MERKBLATT_DIR = path.join(DATA_DIR, "merkblatt");
 const MERKBLATT_DATEI = path.join(MERKBLATT_DIR, "merkblatt.pdf");
 
-for (const dir of [DATA_DIR, COLLECTIONS_DIR, FENSTERBAUER_DIR, KUNDEN_DIR, VORGAENGE_DIR, DOKUMENTE_DIR, LOGS_DIR, MERKBLATT_DIR]) {
+for (const dir of [DATA_DIR, COLLECTIONS_DIR, FENSTERBAUER_DIR, KUNDEN_DIR, VORGAENGE_DIR, DOKUMENTE_DIR, RECHNUNGEN_DIR, LOGS_DIR, MERKBLATT_DIR]) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
@@ -138,6 +140,9 @@ function leereEinstellungen() {
   return {
     naechsteFallnummer: 1,
     fallnummernPraefix: "EW",
+    naechsteRechnungsnummer: 1,
+    rechnungPraefix: "RE",
+    firmendaten: { firmenname: "", strasse: "", plz: "", ort: "", ustId: "" },
     anthropicApiKey: "",
     smtp: { host: "smtp.strato.de", port: 465, verschluesselung: "ssl", benutzername: "", absenderName: "", absenderEmail: "" },
     github: { owner: "GunnarGillert", repo: "Maler_Luft", branch: "" },
@@ -164,10 +169,20 @@ function maskiereEinstellungen(einstellungen) {
   const { anthropicApiKey, githubToken, ...rest } = einstellungen;
   const smtp = einstellungen.smtp || {};
   const github = einstellungen.github || {};
+  const firmendaten = einstellungen.firmendaten || {};
   return {
     ...rest,
     fallnummernPraefix: einstellungen.fallnummernPraefix || "EW",
     naechsteFallnummer: einstellungen.naechsteFallnummer || 1,
+    rechnungPraefix: einstellungen.rechnungPraefix || "RE",
+    naechsteRechnungsnummer: einstellungen.naechsteRechnungsnummer || 1,
+    firmendaten: {
+      firmenname: firmendaten.firmenname || "",
+      strasse: firmendaten.strasse || "",
+      plz: firmendaten.plz || "",
+      ort: firmendaten.ort || "",
+      ustId: firmendaten.ustId || "",
+    },
     anthropicApiKeyGesetzt: Boolean(anthropicApiKey || process.env.ANTHROPIC_API_KEY),
     smtp: {
       host: smtp.host || "smtp.strato.de",
@@ -200,6 +215,20 @@ async function naechsteVorgangsnummer() {
   einstellungen.naechsteFallnummer = nummer + 1;
   await schreibeEinstellungen(einstellungen);
   return `${einstellungen.fallnummernPraefix || "EW"}-${jahr}-${String(nummer).padStart(5, "0")}`;
+}
+
+// Format wie im Rechnungsmuster: "RE2026/0004".
+async function naechsteBelegnummer() {
+  const einstellungen = await leseEinstellungen();
+  const jahr = new Date().getFullYear();
+  const nummer = einstellungen.naechsteRechnungsnummer || 1;
+  einstellungen.naechsteRechnungsnummer = nummer + 1;
+  await schreibeEinstellungen(einstellungen);
+  return `${einstellungen.rechnungPraefix || "RE"}${jahr}/${String(nummer).padStart(4, "0")}`;
+}
+
+function fmt2(zahl) {
+  return (Math.round((zahl + Number.EPSILON) * 100) / 100).toFixed(2).replace(".", ",");
 }
 
 // ----------------------------------------------------------------------------
@@ -909,6 +938,16 @@ app.patch("/api/vorgaenge/:id", async (req, res) => {
   if (zahlungsstatus && v.rechnung) {
     v.rechnung.zahlungsstatus = zahlungsstatus;
     v.historie.push({ wer: "Sachbearbeiter", was: `Zahlungsstatus geändert zu "${zahlungsstatus}"`, wann: heute });
+    // Denselben Status auch an der zugrunde liegenden, selbst erstellten
+    // Rechnung nachführen (falls vorhanden), damit beide Ansichten
+    // (Vorgang-Übersicht und Reiter "Rechnungen") übereinstimmen.
+    if (v.rechnung.rechnungId) {
+      const zugehoerigeRechnung = await leseEins(RECHNUNGEN_DIR, v.rechnung.rechnungId);
+      if (zugehoerigeRechnung) {
+        zugehoerigeRechnung.zahlungsstatus = zahlungsstatus;
+        await schreibe(RECHNUNGEN_DIR, zugehoerigeRechnung.id, zugehoerigeRechnung);
+      }
+    }
   }
   if (bafaVorgangsId !== undefined && bafaVorgangsId !== v.bafaVorgangsId) {
     v.bafaVorgangsId = bafaVorgangsId;
@@ -1078,6 +1117,355 @@ app.get("/api/vorgaenge/:id/dokumente/:dokumentId/datei", async (req, res) => {
 app.get("/api/dokumenttypen", (req, res) => res.json(DOKUMENTTYPEN));
 
 // ----------------------------------------------------------------------------
+// Rechnungs-PDF-Erzeugung (pdf-lib) - Layout angelehnt an ein reales
+// Rechnungsmuster (Energieberatung Kehm): Absenderzeile im DIN-5008-Stil
+// über der Empfängeradresse (fürs Fensterkuvert), Metadaten-Block rechts,
+// Positionstabelle, Summenblock, feste Zahlungs-/Aufbewahrungshinweise.
+//
+// pdf-lib kann mit StandardFonts (Helvetica) nur WinAnsi-kodierbare Zeichen
+// darstellen - ein einzelnes exotisches Zeichen (z. B. ein Emoji oder eine
+// ungewöhnliche Anführungszeichen-Variante aus einem Copy-Paste) würde
+// sonst die GESAMTE PDF-Erzeugung mit "WinAnsi cannot encode ..." zum
+// Absturz bringen. bereinigeFuerWinAnsi() ersetzt bekannte Sonderzeichen
+// durch eine passende Entsprechung und alles andere durch "?", statt das
+// zuzulassen.
+// ----------------------------------------------------------------------------
+const WINANSI_SONDERZONE = new Set([
+  0x20ac, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021, 0x02c6, 0x2030,
+  0x0160, 0x2039, 0x0152, 0x017d, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022,
+  0x2013, 0x2014, 0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0x017e, 0x0178,
+]);
+
+function istWinAnsiEncodable(codePoint) {
+  if (codePoint >= 0x20 && codePoint <= 0x7e) return true;
+  if (codePoint >= 0xa0 && codePoint <= 0xff) return true;
+  return WINANSI_SONDERZONE.has(codePoint);
+}
+
+const WINANSI_ERSATZ = {
+  0x202f: " ", 0x2009: " ", 0x2007: " ", 0x2008: " ", 0x200a: " ",
+  0x200b: "", 0xfeff: "",
+  0x2011: "-",
+};
+
+function bereinigeFuerWinAnsi(text) {
+  const s = String(text ?? "");
+  let ergebnis = "";
+  for (const zeichen of s) {
+    const code = zeichen.codePointAt(0);
+    ergebnis += istWinAnsiEncodable(code) ? zeichen : (WINANSI_ERSATZ[code] ?? "?");
+  }
+  return ergebnis;
+}
+
+function seiteMitSichererTextausgabe(page) {
+  const drawTextOriginal = page.drawText.bind(page);
+  page.drawText = (text, optionen) => drawTextOriginal(bereinigeFuerWinAnsi(text), optionen);
+  return page;
+}
+
+function sichereSchrift(font) {
+  const breiteOriginal = font.widthOfTextAtSize.bind(font);
+  const kodiereOriginal = font.encodeText.bind(font);
+  font.widthOfTextAtSize = (text, groesse) => breiteOriginal(bereinigeFuerWinAnsi(text), groesse);
+  font.encodeText = (text) => kodiereOriginal(bereinigeFuerWinAnsi(text));
+  return font;
+}
+
+// Einfacher wortweiser Zeilenumbruch (eine Schriftart, keine Formatierung) -
+// für die "Leistung"-Spalte der Positionstabelle, deren Text länger sein
+// kann als die Spaltenbreite.
+function umbrichZeilen(text, font, groesse, maxBreite) {
+  const woerter = String(text || "").split(/\s+/).filter(Boolean);
+  const zeilen = [];
+  let aktuell = "";
+  for (const wort of woerter) {
+    const kandidat = aktuell ? `${aktuell} ${wort}` : wort;
+    if (font.widthOfTextAtSize(kandidat, groesse) <= maxBreite || !aktuell) {
+      aktuell = kandidat;
+    } else {
+      zeilen.push(aktuell);
+      aktuell = wort;
+    }
+  }
+  if (aktuell) zeilen.push(aktuell);
+  return zeilen.length > 0 ? zeilen : [""];
+}
+
+async function erzeugeRechnungPdf({ rechnung, vorgang, kunde, einstellungen }) {
+  const pdfDoc = await PDFDocument.create();
+  const page = seiteMitSichererTextausgabe(pdfDoc.addPage([210 * 2.8346, 297 * 2.8346])); // A4
+  const MM = 2.8346;
+  const font = sichereSchrift(await pdfDoc.embedFont(StandardFonts.Helvetica));
+  const fontBold = sichereSchrift(await pdfDoc.embedFont(StandardFonts.HelveticaBold));
+  const randLinks = 25 * MM;
+  const breite = page.getWidth() - 2 * randLinks;
+  const f = einstellungen.firmendaten || {};
+
+  let y = page.getHeight() - 20 * MM;
+  page.drawText(f.firmenname || "", { x: randLinks, y, size: 12, font: fontBold, color: rgb(0.15, 0.2, 0.3) });
+  y -= 5 * MM;
+  if (f.strasse) { page.drawText(f.strasse, { x: randLinks, y, size: 10, font }); y -= 4.5 * MM; }
+  if (f.plz || f.ort) { page.drawText([f.plz, f.ort].filter(Boolean).join(" "), { x: randLinks, y, size: 10, font }); y -= 4.5 * MM; }
+
+  // Absenderzeile für Fensterumschläge (DIN-5008-Konvention), wie bei
+  // Parkwerks Anschreiben.
+  y -= 8 * MM;
+  const absenderzeile = [f.firmenname, f.strasse, [f.plz, f.ort].filter(Boolean).join(" ")].filter(Boolean).join(" * ");
+  if (absenderzeile) {
+    page.drawText(absenderzeile, { x: randLinks, y, size: 7, font, color: rgb(0.45, 0.48, 0.52) });
+    y -= 6 * MM;
+  }
+
+  const empfaengerZeilen = [];
+  if (kunde.firma) {
+    empfaengerZeilen.push(kunde.firma);
+    if (kunde.vorname || kunde.nachname) empfaengerZeilen.push(`${kunde.vorname} ${kunde.nachname}`.trim());
+  } else {
+    empfaengerZeilen.push(`${kunde.vorname} ${kunde.nachname}`.trim());
+  }
+  if (kunde.strasse) empfaengerZeilen.push(kunde.strasse);
+  empfaengerZeilen.push([kunde.plz, kunde.ort].filter(Boolean).join(" "));
+
+  const empfaengerYStart = y;
+  for (const zeile of empfaengerZeilen) {
+    page.drawText(zeile, { x: randLinks, y, size: 10, font });
+    y -= 4.5 * MM;
+  }
+
+  // Metadaten-Block rechts, auf Höhe der Empfängeradresse.
+  let yMeta = empfaengerYStart;
+  const metaZeilen = [
+    ["Belegdatum:", formatDatumDe(rechnung.belegdatum)],
+    ["Belegnummer:", rechnung.belegnummer],
+    f.ustId ? ["UStID Abs.:", f.ustId] : null,
+  ].filter(Boolean);
+  const metaRechtsX = page.getWidth() - randLinks;
+  for (const [label, wert] of metaZeilen) {
+    page.drawText(label, { x: metaRechtsX - 60 * MM, y: yMeta, size: 9, font });
+    const wertBreite = font.widthOfTextAtSize(wert || "", 9);
+    page.drawText(wert || "", { x: metaRechtsX - wertBreite, y: yMeta, size: 9, font });
+    yMeta -= 4.5 * MM;
+  }
+
+  y = Math.min(y, yMeta) - 12 * MM;
+  page.drawText("Rechnung", { x: randLinks, y, size: 16, font: fontBold });
+  y -= 10 * MM;
+  page.drawText("Aufgrund unserer Leistung berechnen wir wie folgt:", { x: randLinks, y, size: 10, font });
+  y -= 8 * MM;
+
+  // Positionstabelle
+  const spalten = [
+    { label: "Pos.", breite: 12 * MM },
+    { label: "Menge", breite: 12 * MM },
+    { label: "ME", breite: 14 * MM },
+    { label: "Artikel-Nr.", breite: 16 * MM },
+    { label: "Leistung", breite: 64 * MM },
+    { label: "Einzelpreis", breite: 21 * MM },
+    { label: "Gesamtpreis", breite: 21 * MM },
+  ];
+  let xSpalte = randLinks;
+  const spaltenX = spalten.map((s) => { const x = xSpalte; xSpalte += s.breite; return x; });
+
+  page.drawLine({ start: { x: randLinks, y: y + 3 * MM }, end: { x: randLinks + breite, y: y + 3 * MM }, thickness: 0.75, color: rgb(0.6, 0.63, 0.67) });
+  spalten.forEach((s, i) => page.drawText(s.label, { x: spaltenX[i], y, size: 8.5, font: fontBold }));
+  y -= 4 * MM;
+  page.drawLine({ start: { x: randLinks, y: y + 2 * MM }, end: { x: randLinks + breite, y: y + 2 * MM }, thickness: 0.5, color: rgb(0.75, 0.78, 0.82) });
+  y -= 3 * MM;
+
+  rechnung.positionen.forEach((pos, i) => {
+    const leistungZeilen = umbrichZeilen(pos.leistung, font, 8.5, spalten[4].breite - 2 * MM);
+    const zeilenHoehe = Math.max(1, leistungZeilen.length) * 3.6 * MM;
+    page.drawText(String(i + 1), { x: spaltenX[0], y, size: 8.5, font });
+    page.drawText(String(pos.menge), { x: spaltenX[1], y, size: 8.5, font });
+    page.drawText(pos.einheit || "", { x: spaltenX[2], y, size: 8.5, font });
+    page.drawText(pos.artikelNr || "", { x: spaltenX[3], y, size: 8.5, font });
+    let yLeistung = y;
+    for (const zeile of leistungZeilen) {
+      page.drawText(zeile, { x: spaltenX[4], y: yLeistung, size: 8.5, font });
+      yLeistung -= 3.6 * MM;
+    }
+    const einzelpreisText = fmt2(pos.einzelpreis);
+    page.drawText(einzelpreisText, { x: spaltenX[5] + (spalten[5].breite - font.widthOfTextAtSize(einzelpreisText, 8.5)), y, size: 8.5, font });
+    const gesamtpreis = pos.menge * pos.einzelpreis;
+    const gesamtpreisText = fmt2(gesamtpreis);
+    page.drawText(gesamtpreisText, { x: spaltenX[6] + (spalten[6].breite - font.widthOfTextAtSize(gesamtpreisText, 8.5)), y, size: 8.5, font });
+    y -= zeilenHoehe + 2 * MM;
+  });
+
+  page.drawLine({ start: { x: randLinks, y: y + 2 * MM }, end: { x: randLinks + breite, y: y + 2 * MM }, thickness: 0.5, color: rgb(0.75, 0.78, 0.82) });
+  y -= 6 * MM;
+
+  // Summenblock rechtsbündig
+  const summenX = randLinks + breite - 78 * MM;
+  const summenWertX = randLinks + breite;
+  function summenzeile(label, wert, fett) {
+    page.drawText(label, { x: summenX, y, size: 9.5, font: fett ? fontBold : font });
+    const wertText = fmt2(wert);
+    const wertBreite = (fett ? fontBold : font).widthOfTextAtSize(wertText, 9.5);
+    page.drawText(wertText, { x: summenWertX - wertBreite, y, size: 9.5, font: fett ? fontBold : font });
+    y -= 5 * MM;
+  }
+  summenzeile("Summe Netto (EUR)", rechnung.summeNetto, false);
+  summenzeile(`zuzgl. ${rechnung.mwstSatz}% gesetzl. MwSt.`, rechnung.mwstBetrag, false);
+  page.drawLine({ start: { x: summenX, y: y + 3.5 * MM }, end: { x: summenWertX, y: y + 3.5 * MM }, thickness: 0.5, color: rgb(0.75, 0.78, 0.82) });
+  summenzeile("Endbetrag (EUR)", rechnung.endbetrag, true);
+
+  y -= 8 * MM;
+  page.drawText("Der Rechnungsbetrag ist innerhalb 10 Tagen ohne Abzug zahlbar.", { x: randLinks, y, size: 10, font: fontBold });
+  y -= 8 * MM;
+  page.drawText("Als Leistungsempfänger sind Sie verpflichtet diese Rechnung zwei Jahre lang aufzubewahren.", { x: randLinks, y, size: 9, font });
+
+  const fusszeile = "Seite: 1 / 1";
+  const fusszeileBreite = font.widthOfTextAtSize(fusszeile, 8);
+  page.drawText(fusszeile, { x: page.getWidth() - randLinks - fusszeileBreite, y: 15 * MM, size: 8, font, color: rgb(0.5, 0.53, 0.57) });
+
+  return Buffer.from(await pdfDoc.save());
+}
+
+// ----------------------------------------------------------------------------
+// API: Rechnungen (selbst erstellte Rechnungen, z. B. Energieberatung an den
+// Kunden) - eigenständig von den hochgeladenen "Rechnung Lieferant"/
+// "Rechnung Energieberatung"-UNTERLAGEN (Dokumenttypen weiter oben), auch
+// wenn beide Konzepte thematisch zusammengehören: Dort werden FREMDE
+// Rechnungen (z. B. vom Fensterbauer) abgelegt, hier wird eine EIGENE
+// Rechnung erzeugt und als PDF ausgegeben.
+// ----------------------------------------------------------------------------
+app.get("/api/rechnungen", async (req, res) => {
+  const vorgangId = String(req.query.vorgangId || "");
+  const alle = await leseAlle(RECHNUNGEN_DIR);
+  const gefiltert = vorgangId ? alle.filter((r) => r.vorgangId === vorgangId) : alle;
+  gefiltert.sort((a, b) => b.belegnummer.localeCompare(a.belegnummer));
+  res.json(gefiltert);
+});
+
+app.get("/api/rechnungen/:id", async (req, res) => {
+  const r = await leseEins(RECHNUNGEN_DIR, req.params.id);
+  if (!r) return res.status(404).json({ fehler: "Rechnung nicht gefunden." });
+  res.json(r);
+});
+
+app.post("/api/rechnungen", async (req, res) => {
+  const { vorgangId, typ, belegdatum, mwstSatz, positionen } = req.body;
+  if (!vorgangId) return res.status(400).json({ fehler: "Vorgang ist Pflichtfeld." });
+  if (!["Lieferant", "Energieberatung"].includes(typ)) return res.status(400).json({ fehler: "Rechnungsart muss \"Lieferant\" oder \"Energieberatung\" sein." });
+  if (!Array.isArray(positionen) || positionen.length === 0) {
+    return res.status(400).json({ fehler: "Mindestens eine Position ist erforderlich." });
+  }
+  for (const pos of positionen) {
+    if (!pos.leistung || !(Number(pos.menge) > 0) || !(Number(pos.einzelpreis) >= 0)) {
+      return res.status(400).json({ fehler: "Jede Position braucht eine Leistung, eine Menge > 0 und einen Einzelpreis." });
+    }
+  }
+
+  const v = await leseEins(VORGAENGE_DIR, vorgangId);
+  if (!v) return res.status(404).json({ fehler: "Vorgang nicht gefunden." });
+  const kunde = await leseEins(KUNDEN_DIR, v.kundeId);
+  if (!kunde) return res.status(400).json({ fehler: "Kunde des Vorgangs nicht gefunden." });
+
+  const belegdatumGueltig = belegdatum && /^\d{4}-\d{2}-\d{2}$/.test(belegdatum) ? belegdatum : new Date().toISOString().slice(0, 10);
+  const mwstSatzGueltig = Number.isFinite(Number(mwstSatz)) ? Number(mwstSatz) : 19;
+
+  const positionenBereinigt = positionen.map((pos) => ({
+    menge: Number(pos.menge),
+    einheit: String(pos.einheit || "").trim(),
+    artikelNr: String(pos.artikelNr || "").trim(),
+    leistung: String(pos.leistung).trim(),
+    einzelpreis: Number(pos.einzelpreis),
+  }));
+  const summeNetto = Math.round(positionenBereinigt.reduce((s, p) => s + p.menge * p.einzelpreis, 0) * 100) / 100;
+  const mwstBetrag = Math.round(summeNetto * (mwstSatzGueltig / 100) * 100) / 100;
+  const endbetrag = Math.round((summeNetto + mwstBetrag) * 100) / 100;
+
+  // "Der Rechnungsbetrag ist innerhalb 10 Tagen ohne Abzug zahlbar." -
+  // Fälligkeit wird aus dieser festen Zahlungsfrist berechnet, nicht
+  // manuell eingegeben.
+  const faelligkeitsdatum = new Date(belegdatumGueltig);
+  faelligkeitsdatum.setDate(faelligkeitsdatum.getDate() + 10);
+
+  const id = crypto.randomUUID();
+  const belegnummer = await naechsteBelegnummer();
+  const rechnung = {
+    id, belegnummer, vorgangId, typ, belegdatum: belegdatumGueltig,
+    faelligkeitsdatum: faelligkeitsdatum.toISOString().slice(0, 10),
+    mwstSatz: mwstSatzGueltig, positionen: positionenBereinigt,
+    summeNetto, mwstBetrag, endbetrag,
+    zahlungsstatus: "offen",
+    erstelltAm: new Date().toISOString().slice(0, 10),
+  };
+  await schreibe(RECHNUNGEN_DIR, id, rechnung);
+
+  const heute = new Date().toISOString().slice(0, 10);
+  const warUeberschrieben = Boolean(v.rechnung);
+  v.rechnung = { betrag: endbetrag, faelligkeitsdatum: rechnung.faelligkeitsdatum, zahlungsstatus: "offen", rechnungId: id };
+  v.historie.push({
+    wer: "Sachbearbeiter",
+    was: `Rechnung "${belegnummer}" (${typ}) über ${fmt2(endbetrag)} EUR erstellt, fällig am ${formatDatumDe(rechnung.faelligkeitsdatum)}` +
+      (warUeberschrieben ? " (ersetzt die bisher am Vorgang hinterlegte Rechnungsübersicht - alle Rechnungen bleiben im Reiter 'Rechnungen' einsehbar)" : ""),
+    wann: heute,
+  });
+  await schreibe(VORGAENGE_DIR, v.id, v);
+
+  res.status(201).json(rechnung);
+});
+
+app.patch("/api/rechnungen/:id", async (req, res) => {
+  const r = await leseEins(RECHNUNGEN_DIR, req.params.id);
+  if (!r) return res.status(404).json({ fehler: "Rechnung nicht gefunden." });
+  const { zahlungsstatus } = req.body;
+  if (!["offen", "bezahlt"].includes(zahlungsstatus)) return res.status(400).json({ fehler: "Ungültiger Zahlungsstatus." });
+  r.zahlungsstatus = zahlungsstatus;
+  await schreibe(RECHNUNGEN_DIR, r.id, r);
+
+  // Spiegelt den Status auch an der Rechnungsübersicht des Vorgangs, falls
+  // diese Rechnung die dort aktuell hinterlegte ist (symmetrisch zum
+  // umgekehrten Weg über "Als bezahlt markieren" am Vorgang selbst).
+  const v = await leseEins(VORGAENGE_DIR, r.vorgangId);
+  if (v && v.rechnung?.rechnungId === r.id) {
+    v.rechnung.zahlungsstatus = zahlungsstatus;
+    v.historie.push({
+      wer: "Sachbearbeiter",
+      was: `Zahlungsstatus der Rechnung "${r.belegnummer}" geändert zu "${zahlungsstatus}"`,
+      wann: new Date().toISOString().slice(0, 10),
+    });
+    await schreibe(VORGAENGE_DIR, v.id, v);
+  }
+  res.json(r);
+});
+
+app.delete("/api/rechnungen/:id", async (req, res) => {
+  const r = await leseEins(RECHNUNGEN_DIR, req.params.id);
+  if (!r) return res.status(404).json({ fehler: "Rechnung nicht gefunden." });
+  await loesche(RECHNUNGEN_DIR, r.id);
+
+  const v = await leseEins(VORGAENGE_DIR, r.vorgangId);
+  if (v && v.rechnung?.rechnungId === r.id) {
+    v.rechnung = null;
+    v.historie.push({
+      wer: "Sachbearbeiter",
+      was: `Rechnung "${r.belegnummer}" gelöscht - Rechnungsübersicht am Vorgang zurückgesetzt.`,
+      wann: new Date().toISOString().slice(0, 10),
+    });
+    await schreibe(VORGAENGE_DIR, v.id, v);
+  }
+  res.status(204).end();
+});
+
+app.get("/api/rechnungen/:id/pdf", async (req, res) => {
+  const r = await leseEins(RECHNUNGEN_DIR, req.params.id);
+  if (!r) return res.status(404).json({ fehler: "Rechnung nicht gefunden." });
+  const v = await leseEins(VORGAENGE_DIR, r.vorgangId);
+  const kunde = v ? await leseEins(KUNDEN_DIR, v.kundeId) : null;
+  if (!v || !kunde) return res.status(404).json({ fehler: "Vorgang oder Kunde der Rechnung nicht mehr vorhanden." });
+  const einstellungen = await leseEinstellungen();
+
+  const pdfBuffer = await erzeugeRechnungPdf({ rechnung: r, vorgang: v, kunde, einstellungen });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="${r.belegnummer.replace(/\//g, "-")}.pdf"`);
+  res.send(pdfBuffer);
+});
+
+// ----------------------------------------------------------------------------
 // API: Einstellungen - Claude-API, Auftragsnummer, SMTP, GitHub-Update
 // ----------------------------------------------------------------------------
 app.get("/api/einstellungen", async (req, res) => {
@@ -1097,6 +1485,7 @@ app.post("/api/einstellungen", async (req, res) => {
   const neu = { ...einstellungen, ...eingabe };
   if (eingabe.smtp) neu.smtp = { ...einstellungen.smtp, ...eingabe.smtp };
   if (eingabe.github) neu.github = { ...einstellungen.github, ...eingabe.github };
+  if (eingabe.firmendaten) neu.firmendaten = { ...einstellungen.firmendaten, ...eingabe.firmendaten };
   await schreibeEinstellungen(neu);
   debugLog("einstellungen", `Einstellungen aktualisiert: ${Object.keys(eingabe).join(", ")}`);
   res.json(maskiereEinstellungen(neu));
