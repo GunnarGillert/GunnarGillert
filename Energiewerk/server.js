@@ -246,12 +246,12 @@ function enthaeltText(werte, suchtext) {
 // ----------------------------------------------------------------------------
 const DOKUMENTTYPEN = [
   "Angebot", "Antrag", "Technische Projektbeschreibung (TPB)", "Technischer Projektnachweis (TPN)",
-  "Vollmacht", "U-Wert-Nachweis", "Bescheid", "Rechnung",
+  "Vollmacht", "U-Wert-Nachweis", "Zuwendungsbescheid", "Bescheid", "Rechnung",
   "Zahlungsnachweis", "Verwendungsnachweis", "Festsetzungsbescheid", "Sonstiges",
 ];
 
 const ERKENNUNGS_REIHENFOLGE = [
-  ["zuwendungsbescheid", "Bescheid"],
+  ["zuwendungsbescheid", "Zuwendungsbescheid"],
   ["festsetzungsbescheid", "Festsetzungsbescheid"],
   ["verwendungsnachweis", "Verwendungsnachweis"],
   ["zahlungsnachweis", "Zahlungsnachweis"],
