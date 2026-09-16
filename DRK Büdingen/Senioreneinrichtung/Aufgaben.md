@@ -16,7 +16,13 @@ neue Aufgaben aus Folgeterminen ergänzen.
 | [ ] | A&P-Ordner „Soziale Betreuung" in SharePoint anlegen, Berechtigungen setzen, Team schulen | IT/Schulung | nach Passwortrücksetzung |
 | [ ] | WLAN-Design prüfen: zusätzliche Kabel für APs in problematischen Ecken einplanen, keine Repeater ohne gutes Basis-Signal | IT | mit Verkabelungsprojekt |
 | [ ] | Brandschutz-Dokumentation (Hilti-Zertifikat, Aufkleber, Mörtelangabe, Unterschrift) für alle neuen Durchführungen sicherstellen | Hausmeister/Brandschutz/IT | parallel zur Verkabelung |
+| [ ] | RAM-Upgrade HV61024DC1 (HPE ProLiant DL560 Gen10) von 256 GB auf 512 GB: Angebot für 16× HPE P03050-091 (16 GB DDR4-2933 RDIMM) beim Bürozentrum einholen, dann Bestellung/Einbau planen | Gunnar/IT | nach Angebot Bürozentrum |
 
 ## Verlauf
 
 - **2026-09-14** – Erstgespräch mit der Leitung, Aufgabenliste initial erstellt.
+- **2026-09-16** – RAM-Upgrade für HV61024DC1 (256 GB → 512 GB) aufgenommen, Bestandsaufnahme
+  der aktuellen Bestückung (16× HPE P03050-091) durchgeführt, Angebotsanfrage an das
+  Bürozentrum als Entwurf vorbereitet (siehe
+  [`Anfrage-Buerozentrum-RAM-HV61024DC1.md`](Anfrage-Buerozentrum-RAM-HV61024DC1.md)), noch zu
+  versenden.
