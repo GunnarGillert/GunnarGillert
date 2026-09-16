@@ -1,7 +1,7 @@
 # Angebotsanfrage – RAM-Upgrade HV61024DC1
 
-Entwurf einer Anfrage an das Bürozentrum für ein unverbindliches Angebot. Kontaktdaten des
-Bürozentrums und Absenderdaten vor dem Versand noch ergänzen/prüfen.
+Anfrage an das Bürozentrum für ein unverbindliches Angebot. **Status: versendet (2026-09-16),
+Angebot steht noch aus.**
 
 ---
 
