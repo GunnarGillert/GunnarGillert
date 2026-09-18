@@ -1,0 +1,10 @@
+# Nur für den Prototyp (docker-compose.prototype.yml): terminiert HTTPS mit
+# einem selbstsignierten Zertifikat (Caddys eigene interne CA) und leitet an
+# Snipe-IT weiter. Für den Produktivbetrieb über Microsoft Entra Application
+# Proxy wird dieses Overlay NICHT mehr gebraucht - siehe README.md.
+
+{$SNIPEIT_HOSTNAME} {
+	tls internal
+
+	reverse_proxy snipeit-app:80
+}

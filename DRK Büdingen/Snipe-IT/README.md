@@ -24,6 +24,11 @@ Docker Compose: snipeit-app (Snipe-IT/PHP) + snipeit-db (MariaDB)
 Die Trennung Hauptamt/Ehrenamt erfolgt **innerhalb** von Snipe-IT über die
 Companies-Funktion (Kapitel weiter unten) – nicht durch getrennte Instanzen.
 
+> **Nur schnell testen/Prototyp bauen?** Siehe [`RUNBOOK-Prototyp.md`](./RUNBOOK-Prototyp.md) –
+> Snipe-IT auf einem Ubuntu-Server mit selbstsigniertem TLS-Zertifikat, ganz
+> ohne öffentlichen DNS-Namen und ohne Entra Application Proxy. Dieses
+> README hier beschreibt den vollständigen Produktivweg.
+
 ## Voraussetzungen
 
 - Neuer Linux-Server/VM (Debian/Ubuntu empfohlen), mind. 2 vCPU / 4 GB RAM /
