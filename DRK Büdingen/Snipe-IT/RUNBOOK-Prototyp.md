@@ -44,7 +44,15 @@ Gruppenmitgliedschaft greift. Prüfen:
 docker compose version   # sollte Docker Compose v2.x anzeigen
 ```
 
-## Schritt 3: SSH-Key-Login einrichten (empfohlen)
+## Schritt 3: SSH-Key-Login einrichten (optional, für den Prototyp zurückgestellt)
+
+> **Aktueller Stand:** Für den Prototyp bleibt Passwort-Auth über SSH
+> zunächst **aktiv** – dieser Schritt wird also übersprungen und kann
+> jederzeit später nachgeholt werden (spätestens vor dem Produktivbetrieb
+> empfohlen). Stelle in dem Fall sicher, dass das Konto-Passwort weiterhin
+> stark und nicht das Standardpasswort ist (siehe vorheriger Hinweis).
+
+Falls/sobald ihr SSH-Key-Login doch einrichten wollt, hier die Anleitung:
 
 Statt mit Passwort meldest du dich künftig mit einem SSH-Schlüsselpaar an –
 deutlich sicherer, da kein Passwort mehr über das Netz übertragen wird und
@@ -218,3 +226,6 @@ Produktivweg. Für den echten Betrieb:
    und TerraCloud-Backup-Konfiguration.
 4. Nur noch `docker compose up -d` (ohne das `prototype.yml`-Overlay)
    verwenden.
+5. Zurückgestelltes SSH-Hardening aus Schritt 3 nachholen: SSH-Key-Login
+   einrichten und `PasswordAuthentication no` setzen, bevor der Server im
+   Produktivbetrieb echte BOS-Gerätedaten enthält.
