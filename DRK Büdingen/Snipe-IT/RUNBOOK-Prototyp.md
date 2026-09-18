@@ -44,7 +44,73 @@ Gruppenmitgliedschaft greift. Prüfen:
 docker compose version   # sollte Docker Compose v2.x anzeigen
 ```
 
-## Schritt 3: Firewall öffnen
+## Schritt 3: SSH-Key-Login einrichten (empfohlen)
+
+Statt mit Passwort meldest du dich künftig mit einem SSH-Schlüsselpaar an –
+deutlich sicherer, da kein Passwort mehr über das Netz übertragen wird und
+Brute-Force-Angriffe auf SSH ins Leere laufen.
+
+**Auf deinem Arbeitsplatz-Rechner** (nicht auf dem Server!) – falls noch
+kein Schlüssel vorhanden ist:
+
+```bash
+ssh-keygen -t ed25519 -C "snipe-it-admin@drkbuedingen"
+```
+
+Vorgeschlagenen Speicherort mit Enter bestätigen, eine Passphrase vergeben
+(schützt den privaten Schlüssel zusätzlich, falls der Rechner kompromittiert
+wird).
+
+Öffentlichen Schlüssel auf den Server übertragen (ersetzt `<server-ip>`):
+
+```bash
+# Linux/macOS:
+ssh-copy-id snipe-it-admin@<server-ip>
+
+# Falls ssh-copy-id nicht verfügbar ist (u. a. Windows/PowerShell):
+cat ~/.ssh/id_ed25519.pub | ssh snipe-it-admin@<server-ip> "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+```
+
+**Wichtig – vor dem Deaktivieren von Passwort-Login testen:** in einem
+**neuen**, zweiten Terminalfenster (die bisherige Verbindung offen lassen!)
+prüfen, dass der Login mit Schlüssel funktioniert:
+
+```bash
+ssh snipe-it-admin@<server-ip>
+```
+
+Es sollte höchstens nach der SSH-Key-Passphrase fragen, **nicht** mehr nach
+dem Konto-Passwort. Erst wenn das zuverlässig klappt, weitermachen.
+
+**Auf dem Server**: Passwort-Login für SSH deaktivieren:
+
+```bash
+sudo nano /etc/ssh/sshd_config
+```
+
+Folgende Zeilen setzen (bestehende auskommentierte Zeilen entsprechend
+anpassen/ergänzen):
+
+```
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+```
+
+Konfiguration auf Syntaxfehler prüfen, bevor der Dienst neu gestartet wird:
+
+```bash
+sudo sshd -t
+sudo systemctl restart ssh
+```
+
+Sicherheitsnetz: Da der Server als Hyper-V-VM läuft, bleibt die
+VM-Konsole (das Fenster aus dem Screenshot vorhin) auch bei einer
+Fehlkonfiguration von SSH erreichbar – ein vollständiges Aussperren ist
+damit nicht zu befürchten, trotzdem lohnt der Test in Schritt 3 vor dem
+Neustart.
+
+## Schritt 4: Firewall öffnen
 
 Nur HTTPS für den Prototyp-Zugriff freigeben (SSH bleibt offen, falls
 `ufw` schon aktiv ist):
@@ -56,7 +122,7 @@ sudo ufw enable   # falls ufw noch nicht aktiv war
 sudo ufw status
 ```
 
-## Schritt 4: Repository holen und konfigurieren
+## Schritt 5: Repository holen und konfigurieren
 
 ```bash
 git clone https://github.com/GunnarGillert/GunnarGillert.git
@@ -74,9 +140,9 @@ In der `.env` folgende Werte setzen (Editor z. B. `nano .env`):
   openssl rand -base64 32
   ```
 
-`APP_KEY` bleibt vorerst leer, kommt in Schritt 6.
+`APP_KEY` bleibt vorerst leer, kommt in Schritt 7.
 
-## Schritt 5: Container starten
+## Schritt 6: Container starten
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prototype.yml up -d
@@ -87,7 +153,7 @@ Alle drei Dienste (`snipeit-db`, `snipeit-app`, `snipeit-caddy`) sollten
 `running`/`healthy` sein. Bei `snipeit-db` kann der Healthcheck bis zu
 30 Sekunden brauchen.
 
-## Schritt 6: APP_KEY erzeugen
+## Schritt 7: APP_KEY erzeugen
 
 ```bash
 docker compose run --rm snipeit-app php artisan key:generate --show
@@ -100,9 +166,9 @@ starten, damit der Key greift:
 docker compose -f docker-compose.yml -f docker-compose.prototype.yml up -d
 ```
 
-## Schritt 7: Im Browser öffnen
+## Schritt 8: Im Browser öffnen
 
-`https://<server-ip>` aufrufen (die IP aus Schritt 4). Der Browser zeigt
+`https://<server-ip>` aufrufen (die IP aus Schritt 5). Der Browser zeigt
 eine Zertifikatswarnung, weil das Zertifikat selbstsigniert ist – das ist
 für den Prototyp erwartet und unbedenklich (Verbindung ist trotzdem
 verschlüsselt). Warnung bestätigen/fortfahren ("Erweitert" → "Trotzdem
