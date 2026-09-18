@@ -1,0 +1,30 @@
+# Overlay NUR für den internen Prototyp - fügt einen Caddy-Reverse-Proxy mit
+# selbstsigniertem TLS-Zertifikat hinzu, damit Snipe-IT ohne öffentlichen
+# DNS-Namen per HTTPS erreichbar ist (z. B. https://<server-ip> oder
+# https://<interner-hostname>).
+#
+# Start:  docker compose -f docker-compose.yml -f docker-compose.prototype.yml up -d
+#
+# Für den späteren Produktivbetrieb über Microsoft Entra Application Proxy
+# (siehe README.md) wird dieses Overlay nicht mehr benötigt - dann reicht
+# "docker compose up -d" mit der Basis-docker-compose.yml allein.
+
+services:
+  caddy:
+    image: caddy:2
+    container_name: snipeit-caddy
+    restart: unless-stopped
+    depends_on:
+      - snipeit-app
+    ports:
+      - "443:443"
+    environment:
+      SNIPEIT_HOSTNAME: ${SNIPEIT_HOSTNAME}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:

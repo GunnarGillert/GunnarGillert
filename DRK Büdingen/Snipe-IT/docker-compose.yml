@@ -1,0 +1,73 @@
+# Fester Projektname für stabile Container-/Netzwerknamen.
+name: snipeit
+
+# Snipe-IT Asset-Management für Digitalfunkgeräte und Funkmeldeempfänger.
+# Läuft rein intern (kein öffentlicher Port) - der externe Zugriff erfolgt
+# ausschließlich über den Microsoft Entra Application Proxy Connector, der
+# auf diesem oder einem anderen Rechner im internen Netz installiert wird
+# und http://<dieser-host>:8080 als Backend-URL verwendet. Details siehe
+# README.md, Abschnitt "Microsoft Entra Application Proxy einrichten".
+#
+# Datenbank und hochgeladene Dateien liegen bewusst in den Host-Ordnern
+# ./data/db und ./data/uploads (statt in benannten Docker-Volumes), damit
+# das TerraCloud-Backup-Agent diese Pfade direkt in die Datensicherung
+# aufnehmen kann. Siehe README.md, Abschnitt "Backup (TerraCloud)".
+
+services:
+  snipeit-db:
+    image: mariadb:11
+    container_name: snipeit-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_DATABASE}
+      MARIADB_USER: ${DB_USERNAME}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./data/db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  snipeit-app:
+    image: snipe/snipe-it:latest
+    container_name: snipeit-app
+    restart: unless-stopped
+    depends_on:
+      snipeit-db:
+        condition: service_healthy
+    ports:
+      # Nur an localhost binden, kein Zugriff direkt aus dem Netz -
+      # der Entra Application Proxy Connector läuft auf diesem Host und
+      # spricht über 127.0.0.1:8080 mit dem Container. Läuft der Connector
+      # auf einem anderen Rechner, stattdessen "8080:80" verwenden und den
+      # Zugriff per Host-Firewall auf den Connector-Rechner beschränken.
+      - "127.0.0.1:8080:80"
+    environment:
+      APP_URL: ${APP_URL}
+      APP_KEY: ${APP_KEY}
+      APP_TIMEZONE: Europe/Berlin
+      APP_LOCALE: de
+      PHP_TIMEZONE: Europe/Berlin
+      DB_CONNECTION: mysql
+      DB_HOST: snipeit-db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      # Der Entra Application Proxy Connector terminiert TLS vor dem Connector
+      # und leitet intern per HTTP weiter - Snipe-IT muss den X-Forwarded-*
+      # Headern des Connectors vertrauen, sonst werden falsche Links generiert.
+      APP_TRUSTED_PROXIES: "*"
+      MAIL_MAILER: ${MAIL_MAILER:-smtp}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-tls}
+      MAIL_FROM_ADDR: ${MAIL_FROM_ADDR:-}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Snipe-IT}
+    volumes:
+      - ./data/uploads:/var/lib/snipeit
