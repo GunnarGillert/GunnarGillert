@@ -3,9 +3,3 @@ obj/
 publish/
 *.user
 .vs/
-
-# Snipe-IT Deployment: Secrets sowie Datenbank-/Upload-/Dump-Ordner
-# (Laufzeitdaten, nicht Teil des Repos - Backup läuft über TerraCloud)
-DRK Büdingen/Snipe-IT/.env
-DRK Büdingen/Snipe-IT/data/
-DRK Büdingen/Snipe-IT/dumps/
