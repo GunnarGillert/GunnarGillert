@@ -164,40 +164,49 @@ an die Verwaltungspersonen selbst.
    diese Enterprise-App anwenden (z. B. MFA erzwingen, Zugriff nur von
    verwalteten/kompatiblen Geräten oder bestimmten Standorten).
 
-## Backup
+## Backup (TerraCloud)
 
-`backup.sh` sichert Datenbank und hochgeladene Dateien (Fotos,
-Lizenzdateien) in `backups/` (durch `.gitignore` vom Commit ausgeschlossen –
-Backups gehören auf einen separaten Sicherungsort, nicht ins Git-Repo!).
+Die eigentliche Datensicherung übernimmt **TerraCloud Backup** – nicht ein
+eigenes Skript. TerraCloud sichert Dateien/Ordner vom Host, daher liegen
+Datenbank und Uploads bewusst in Host-Ordnern statt in unsichtbaren
+Docker-internen Volumes:
 
-```bash
-chmod +x backup.sh
-./backup.sh
-```
+| Ordner | Inhalt | In TerraCloud einplanen? |
+|---|---|---|
+| `./dumps/` | Tägliche komprimierte SQL-Dumps der Datenbank (`db-dump.sh`) | ✅ ja |
+| `./data/uploads/` | Hochgeladene Dateien (Fotos, Lizenzdateien, Anhänge) | ✅ ja |
+| `./data/db/` | Laufende MariaDB-Datendateien | ❌ nein – laufende Datenbankdateien im Dateibetrieb zu sichern kann ein inkonsistentes Backup ergeben; dafür dient der Dump in `./dumps/` |
+| `.env` | Enthält Datenbank-Passwörter/App-Key | ✅ ja, aber **verschlüsselt/Zugriff eingeschränkt** ablegen (Secret!) |
 
-Als tägliche Cron-Aufgabe einrichten:
+Schritte:
 
-```bash
-crontab -e
-# Backup jede Nacht um 03:00 Uhr
-0 3 * * * cd /pfad/zu/"DRK Büdingen/Snipe-IT" && ./backup.sh >> backups/backup.log 2>&1
-```
-
-Die Backup-Dateien (`backups/*.sql.gz`, `backups/*.tar.gz`) zusätzlich
-regelmäßig auf ein separates System/NAS kopieren – ein lokales Backup auf
-demselben Server schützt nicht vor Hardware-Ausfall.
+1. `db-dump.sh` erzeugt einen konsistenten Datenbank-Dump nach `./dumps/`
+   (Datei-Backup einer laufenden Datenbank wäre sonst potenziell
+   inkonsistent). Als tägliche Cron-Aufgabe einrichten, zeitlich **vor** dem
+   TerraCloud-Lauf:
+   ```bash
+   chmod +x db-dump.sh
+   crontab -e
+   # Dump jede Nacht um 02:00 Uhr, TerraCloud-Lauf z. B. 03:00 Uhr
+   0 2 * * * cd /pfad/zu/"DRK Büdingen/Snipe-IT" && ./db-dump.sh >> dumps/db-dump.log 2>&1
+   ```
+2. In der TerraCloud-Konsole eine Sicherungsaufgabe für diesen Server
+   anlegen, die die Ordner `./dumps/`, `./data/uploads/` und `.env` erfasst
+   (Pfade oben entsprechend dem tatsächlichen Ablageort auf dem Server
+   anpassen, z. B. `/opt/snipeit/dumps`).
+3. Restore-Test nach Einrichtung einmal durchspielen (siehe unten) – ein
+   ungetestetes Backup ist kein verlässliches Backup.
 
 ### Wiederherstellung
 
 ```bash
-# Datenbank zurückspielen
-gunzip -c backups/snipeit-db_<timestamp>.sql.gz | \
+# Datenbank aus TerraCloud-wiederhergestelltem Dump zurückspielen
+gunzip -c dumps/snipeit-db_<timestamp>.sql.gz | \
   docker compose exec -T snipeit-db mariadb -u root -p"$DB_ROOT_PASSWORD" "$DB_DATABASE"
 
-# Dateianhänge zurückspielen
-docker run --rm -v snipeit_snipeit-app-data:/data \
-  -v "$(pwd)/backups:/backup" alpine \
-  sh -c "rm -rf /data/* && tar xzf /backup/snipeit-app-data_<timestamp>.tar.gz -C /data"
+# Dateianhänge: TerraCloud stellt ./data/uploads direkt wieder her,
+# danach reicht ein Neustart der Container
+docker compose up -d
 ```
 
 ## Updates
@@ -207,6 +216,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Vor größeren Versionssprüngen immer zuerst ein Backup erstellen (`./backup.sh`)
-und die [Snipe-IT-Release-Notes](https://github.com/snipe/snipe-it/releases)
-auf Breaking Changes prüfen.
+Vor größeren Versionssprüngen immer zuerst einen Dump erstellen
+(`./db-dump.sh`) und die
+[Snipe-IT-Release-Notes](https://github.com/snipe/snipe-it/releases) auf
+Breaking Changes prüfen.

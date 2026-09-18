@@ -1,5 +1,4 @@
-# Fester Projektname, damit die Docker-Volume-Namen unabhängig vom
-# Ordnernamen/-pfad immer gleich heißen (wichtig für backup.sh).
+# Fester Projektname für stabile Container-/Netzwerknamen.
 name: snipeit
 
 # Snipe-IT Asset-Management für Digitalfunkgeräte und Funkmeldeempfänger.
@@ -8,6 +7,11 @@ name: snipeit
 # auf diesem oder einem anderen Rechner im internen Netz installiert wird
 # und http://<dieser-host>:8080 als Backend-URL verwendet. Details siehe
 # README.md, Abschnitt "Microsoft Entra Application Proxy einrichten".
+#
+# Datenbank und hochgeladene Dateien liegen bewusst in den Host-Ordnern
+# ./data/db und ./data/uploads (statt in benannten Docker-Volumes), damit
+# das TerraCloud-Backup-Agent diese Pfade direkt in die Datensicherung
+# aufnehmen kann. Siehe README.md, Abschnitt "Backup (TerraCloud)".
 
 services:
   snipeit-db:
@@ -20,7 +24,7 @@ services:
       MARIADB_USER: ${DB_USERNAME}
       MARIADB_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - snipeit-db-data:/var/lib/mysql
+      - ./data/db:/var/lib/mysql
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
@@ -66,8 +70,4 @@ services:
       MAIL_FROM_ADDR: ${MAIL_FROM_ADDR:-}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Snipe-IT}
     volumes:
-      - snipeit-app-data:/var/lib/snipeit
-
-volumes:
-  snipeit-db-data:
-  snipeit-app-data:
+      - ./data/uploads:/var/lib/snipeit
