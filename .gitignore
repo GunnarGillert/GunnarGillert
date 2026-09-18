@@ -3,3 +3,7 @@ obj/
 publish/
 *.user
 .vs/
+
+# Snipe-IT Deployment: Secrets und lokale Backups nie einchecken
+DRK Büdingen/Snipe-IT/.env
+DRK Büdingen/Snipe-IT/backups/
