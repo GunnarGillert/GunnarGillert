@@ -8,7 +8,7 @@ online) der jeweiligen Firma weiter.
 
 | Firma | E-Rechnungspostfach | Postfach vorhanden | Weiterleitung an DATEV | Absender bei DATEV freigegeben |
 |---|---|---|---|---|
-| Maler Luft | faktura@maler-luft.de | ja (STRATO) | eingerichtet | offen (Steuerberater) |
+| Maler Luft | faktura@maler-luft.de | ja (Office 365) | eingerichtet | offen (Steuerberater) |
 | Energieberatung Kehm | rechnung@eb-kehm.de | angelegt (STRATO) | eingerichtet | offen (Steuerberater) |
 | DK Immobilien GmbH | rechnung@dkimmobiliengmbh.de | angelegt (STRATO) | eingerichtet | offen (Steuerberater) |
 
@@ -31,7 +31,6 @@ zuordnen:
 
 | Firma | Adresse | Webmail-Login | Speicher |
 |---|---|---|---|
-| Maler Luft (bestehend) | faktura@maler-luft.de | faktura@maler-luft.de | – |
 | Energieberatung Kehm | rechnung@eb-kehm.de | rechnung@eb-kehm.de | 5 GB |
 | DK Immobilien GmbH | rechnung@dkimmobiliengmbh.de | rechnung@dkimmobiliengmbh.de | 5 GB |
 
@@ -52,6 +51,15 @@ Im STRATO Kundenservice unter E-Mail → Postfach `rechnung@…` → Weiterleitu
 1. Ziel: die DATEV-Eingangsadresse der Firma (Tabelle 2).
 2. Option „Kopie im Postfach behalten" aktivieren.
 3. Speichern und mit einer Test-Mail inkl. PDF prüfen.
+
+### Maler Luft: Office 365
+
+`faktura@maler-luft.de` liegt bei Microsoft 365 (nicht bei STRATO). Weiterleitung
+dort über das Exchange Admin Center (Postfach → E-Mail-Weiterleitung, „Kopie im
+Postfach behalten") oder per Posteingangsregel „Weiterleiten an" die
+DATEV-Upload-Adresse. Bei externer Weiterleitung kann die Anti-Spam-Richtlinie
+für ausgehende Mails (automatische Weiterleitung) sie blockieren; ggf. dort
+freigeben.
 
 ## 3. Checkliste je Firma
 
@@ -76,7 +84,7 @@ Im STRATO Kundenservice unter E-Mail → Postfach `rechnung@…` → Weiterleitu
 
 ## Offene Fragen
 
-- Keine (Maler Luft läuft ebenfalls bei STRATO).
+- Keine.
 - Mandanten- und Berater-Nr. der drei Firmen (Eingangsadressen sind eingetragen).
 
 ## Status / Protokoll
