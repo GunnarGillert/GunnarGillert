@@ -8,7 +8,7 @@ online) der jeweiligen Firma weiter.
 
 | Firma | E-Rechnungspostfach | Postfach vorhanden | Weiterleitung an DATEV | Absender bei DATEV freigegeben |
 |---|---|---|---|---|
-| Maler Luft | faktura@maler-luft.de | ja | eingerichtet | offen (Steuerberater) |
+| Maler Luft | faktura@maler-luft.de | ja (STRATO) | eingerichtet | offen (Steuerberater) |
 | Energieberatung Kehm | rechnung@eb-kehm.de | angelegt (STRATO) | eingerichtet | offen (Steuerberater) |
 | DK Immobilien GmbH | rechnung@dkimmobiliengmbh.de | angelegt (STRATO) | eingerichtet | offen (Steuerberater) |
 
@@ -31,6 +31,7 @@ zuordnen:
 
 | Firma | Adresse | Webmail-Login | Speicher |
 |---|---|---|---|
+| Maler Luft (bestehend) | faktura@maler-luft.de | faktura@maler-luft.de | – |
 | Energieberatung Kehm | rechnung@eb-kehm.de | rechnung@eb-kehm.de | 5 GB |
 | DK Immobilien GmbH | rechnung@dkimmobiliengmbh.de | rechnung@dkimmobiliengmbh.de | 5 GB |
 
@@ -75,7 +76,7 @@ Im STRATO Kundenservice unter E-Mail → Postfach `rechnung@…` → Weiterleitu
 
 ## Offene Fragen
 
-- Postfach für Maler Luft (`faktura@maler-luft.de`): ebenfalls bei STRATO?
+- Keine (Maler Luft läuft ebenfalls bei STRATO).
 - Mandanten- und Berater-Nr. der drei Firmen (Eingangsadressen sind eingetragen).
 
 ## Status / Protokoll
