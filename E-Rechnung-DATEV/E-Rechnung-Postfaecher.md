@@ -16,9 +16,9 @@ online) der jeweiligen Firma weiter.
 
 | Firma | Mandantennr. | Berater-Nr. | DATEV-Eingangsadresse | Freigegebene Absenderadresse | Bemerkung |
 |---|---|---|---|---|---|
-| Maler Luft | ? | ? | ? | faktura@maler-luft.de | |
-| Energieberatung Kehm | ? | ? | ? | rechnung@energieberatung-kehm.de | |
-| DK Immobilien GmbH | ? | ? | ? | rechnung@dkimmobiliengmbh.de | |
+| Maler Luft | ? | ? | 5c9df7d1-b974-43ce-89c5-652392a8edc0@uploadmail.datev.de | faktura@maler-luft.de | |
+| Energieberatung Kehm | ? | ? | 6631caf3-784a-46cb-a3ba-7a47963cf11d@uploadmail.datev.de | rechnung@energieberatung-kehm.de | |
+| DK Immobilien GmbH | ? | ? | 19bdd967-fd63-46c9-afdb-ea6f6cba9658@uploadmail.datev.de | rechnung@dkimmobiliengmbh.de | |
 
 Weitere bestehende DATEV-E-Mail-Konten hier ergänzen und der jeweiligen Firma
 zuordnen:
@@ -53,4 +53,4 @@ zuordnen:
 - Wo laufen die Postfächer (M365, IONOS o. Ä.)? Danach richten sich die Schritte
   für die Weiterleitung.
 - `rechnung@energieberatung-kehm.de` und `rechnung@dkimmobiliengmbh.de` müssen noch angelegt werden (beim jeweiligen Mail-Provider bzw. Admin).
-- DATEV-Eingangsadressen und Mandantennummern der drei Firmen.
+- Mandanten- und Berater-Nr. der drei Firmen (Eingangsadressen sind eingetragen).
