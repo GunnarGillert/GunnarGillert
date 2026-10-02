@@ -8,9 +8,9 @@ online) der jeweiligen Firma weiter.
 
 | Firma | E-Rechnungspostfach | Postfach vorhanden | Weiterleitung an DATEV | Absender bei DATEV freigegeben |
 |---|---|---|---|---|
-| Maler Luft | faktura@maler-luft.de | ja | offen | offen |
-| Energieberatung Kehm | rechnung@eb-kehm.de | angelegt (STRATO) | offen | offen |
-| DK Immobilien GmbH | rechnung@dkimmobiliengmbh.de | angelegt (STRATO) | offen | offen |
+| Maler Luft | faktura@maler-luft.de | ja | eingerichtet | offen (Steuerberater) |
+| Energieberatung Kehm | rechnung@eb-kehm.de | angelegt (STRATO) | eingerichtet | offen (Steuerberater) |
+| DK Immobilien GmbH | rechnung@dkimmobiliengmbh.de | angelegt (STRATO) | eingerichtet | offen (Steuerberater) |
 
 ## 2. DATEV-Konten / Zuordnung (auszufüllen)
 
@@ -77,3 +77,21 @@ Im STRATO Kundenservice unter E-Mail → Postfach `rechnung@…` → Weiterleitu
 
 - Postfach für Maler Luft (`faktura@maler-luft.de`): ebenfalls bei STRATO?
 - Mandanten- und Berater-Nr. der drei Firmen (Eingangsadressen sind eingetragen).
+
+## Status / Protokoll
+
+| Datum | Stand |
+|---|---|
+| 2026-10-02 | Postfächer `rechnung@eb-kehm.de` und `rechnung@dkimmobiliengmbh.de` bei STRATO angelegt. |
+| 2026-10-02 | Weiterleitungen an die DATEV-Upload-Adressen eingerichtet (alle drei Firmen). |
+| 2026-10-02 | Steuerberater (Domenico) wird vorab per Mail informiert, danach Mail mit Freischaltungsbitte (`Mail-an-Steuerberater.md`). |
+
+Nächste Schritte:
+
+1. [ ] Info-Mail an Domenico senden (`Mail-an-Domenico.md`).
+2. [ ] Freischaltung der drei Absenderadressen beim Steuerberater anfordern
+   (`Mail-an-Steuerberater.md`).
+3. [ ] Nach Freischaltung: Test-Mail mit PDF je Postfach, Eingang in DATEV prüfen.
+4. [ ] Mandanten- und Berater-Nr. in Tabelle 2 nachtragen.
+5. [ ] Lieferanten/Rechnungssteller mit den neuen Rechnungsadressen versorgen
+   (Kehm: `rechnung@eb-kehm.de`).
