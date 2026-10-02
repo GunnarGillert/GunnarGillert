@@ -9,15 +9,15 @@ online) der jeweiligen Firma weiter.
 | Firma | E-Rechnungspostfach | Postfach vorhanden | Weiterleitung an DATEV | Absender bei DATEV freigegeben |
 |---|---|---|---|---|
 | Maler Luft | faktura@maler-luft.de | ja | offen | offen |
-| Energieberatung Kehm | rechnung@energieberatung-kehm.de | **neu anlegen** | offen | offen |
-| DK Immobilien GmbH | rechnung@dkimmobiliengmbh.de | **neu anlegen** | offen | offen |
+| Energieberatung Kehm | rechnung@eb-kehm.de | angelegt (STRATO) | offen | offen |
+| DK Immobilien GmbH | rechnung@dkimmobiliengmbh.de | angelegt (STRATO) | offen | offen |
 
 ## 2. DATEV-Konten / Zuordnung (auszufüllen)
 
 | Firma | Mandantennr. | Berater-Nr. | DATEV-Eingangsadresse | Freigegebene Absenderadresse | Bemerkung |
 |---|---|---|---|---|---|
 | Maler Luft | ? | ? | 5c9df7d1-b974-43ce-89c5-652392a8edc0@uploadmail.datev.de | faktura@maler-luft.de | |
-| Energieberatung Kehm | ? | ? | 6631caf3-784a-46cb-a3ba-7a47963cf11d@uploadmail.datev.de | rechnung@energieberatung-kehm.de | |
+| Energieberatung Kehm | ? | ? | 6631caf3-784a-46cb-a3ba-7a47963cf11d@uploadmail.datev.de | rechnung@eb-kehm.de | |
 | DK Immobilien GmbH | ? | ? | 19bdd967-fd63-46c9-afdb-ea6f6cba9658@uploadmail.datev.de | rechnung@dkimmobiliengmbh.de | |
 
 Weitere bestehende DATEV-E-Mail-Konten hier ergänzen und der jeweiligen Firma
@@ -26,6 +26,31 @@ zuordnen:
 | Konto / Adresse | Zugeordnete Firma | Zweck |
 |---|---|---|
 | ? | | |
+
+## 2a. Neue Postfächer (STRATO)
+
+| Firma | Adresse | Webmail-Login | Speicher |
+|---|---|---|---|
+| Energieberatung Kehm | rechnung@eb-kehm.de | rechnung@eb-kehm.de | 5 GB |
+| DK Immobilien GmbH | rechnung@dkimmobiliengmbh.de | rechnung@dkimmobiliengmbh.de | 5 GB |
+
+- Webmail: https://webmail.strato.com/appsuite/signin
+- Server (SSL/TLS): IMAP `imap.strato.de` 993, POP3 `pop3.strato.de` 995,
+  SMTP `smtp.strato.de` 465
+- Passwörter: in KeePass (nicht im Repo ablegen).
+- Hinweis: Die Kehm-Adresse lautet `rechnung@eb-kehm.de` (nicht
+  `…@energieberatung-kehm.de`). Bitte E-Rechnungs-Absender/Lieferanten mit der
+  richtigen Adresse versorgen.
+
+### Weiterleitung bei STRATO einrichten
+
+Im STRATO Kundenservice unter E-Mail → Postfach `rechnung@…` → Weiterleitung
+(Menünamen können abweichen) bzw. alternativ im Webmail eine Regel
+„Weiterleiten an" anlegen:
+
+1. Ziel: die DATEV-Eingangsadresse der Firma (Tabelle 2).
+2. Option „Kopie im Postfach behalten" aktivieren.
+3. Speichern und mit einer Test-Mail inkl. PDF prüfen.
 
 ## 3. Checkliste je Firma
 
@@ -50,7 +75,5 @@ zuordnen:
 
 ## Offene Fragen
 
-- Wo laufen die Postfächer (M365, IONOS o. Ä.)? Danach richten sich die Schritte
-  für die Weiterleitung.
-- `rechnung@energieberatung-kehm.de` und `rechnung@dkimmobiliengmbh.de` müssen noch angelegt werden (beim jeweiligen Mail-Provider bzw. Admin).
+- Postfach für Maler Luft (`faktura@maler-luft.de`): ebenfalls bei STRATO?
 - Mandanten- und Berater-Nr. der drei Firmen (Eingangsadressen sind eingetragen).
