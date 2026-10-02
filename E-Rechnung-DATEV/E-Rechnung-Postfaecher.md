@@ -9,8 +9,8 @@ online) der jeweiligen Firma weiter.
 | Firma | E-Rechnungspostfach | Postfach vorhanden | Weiterleitung an DATEV | Absender bei DATEV freigegeben |
 |---|---|---|---|---|
 | Maler Luft | faktura@maler-luft.de | ja | offen | offen |
-| Energieberatung Kehm | rechnung@energieberatung-kehm.de | ja | offen | offen |
-| DK Immobilien GmbH | rechnung@dkimmobiliengmbh.de | neu anzulegen? (klären) | offen | offen |
+| Energieberatung Kehm | rechnung@energieberatung-kehm.de | **neu anlegen** | offen | offen |
+| DK Immobilien GmbH | rechnung@dkimmobiliengmbh.de | **neu anlegen** | offen | offen |
 
 ## 2. DATEV-Konten / Zuordnung (auszufüllen)
 
@@ -52,5 +52,5 @@ zuordnen:
 
 - Wo laufen die Postfächer (M365, IONOS o. Ä.)? Danach richten sich die Schritte
   für die Weiterleitung.
-- Existiert `rechnung@dkimmobiliengmbh.de` bereits oder muss es angelegt werden?
+- `rechnung@energieberatung-kehm.de` und `rechnung@dkimmobiliengmbh.de` müssen noch angelegt werden (beim jeweiligen Mail-Provider bzw. Admin).
 - DATEV-Eingangsadressen und Mandantennummern der drei Firmen.
